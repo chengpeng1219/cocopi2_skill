@@ -4,6 +4,7 @@ import argparse
 import getpass
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -147,9 +148,10 @@ def cmd_auth(args: argparse.Namespace) -> int:
     print("密码已保存到 .maixpy/device_credentials.local.json。")
 
     if not paramiko_available() and not shutil.which("sshpass"):
-        print("本机缺少 paramiko 和 sshpass，暂时无法自动验证。")
-        print("请运行：python -m pip install paramiko")
-        return 2
+        print("本机缺少 paramiko 和 sshpass，正在自动安装 paramiko...")
+        if not install_paramiko():
+            print("请手动运行：python -m pip install paramiko")
+            return 2
 
     device = get_device()
     try:
@@ -166,6 +168,39 @@ def cmd_auth(args: argparse.Namespace) -> int:
     detail = (result.stderr or result.stdout).strip()[:200]
     print(f"认证失败：{detail}")
     return 1
+
+
+def install_paramiko() -> bool:
+    """Install paramiko with the current Python interpreter."""
+    command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "paramiko",
+    ]
+    try:
+        proc = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=180,
+            check=False,
+        )
+    except Exception as exc:
+        print(f"自动安装 paramiko 失败：{exc}")
+        return False
+
+    if proc.returncode == 0:
+        print("已自动安装 paramiko。")
+        return True
+
+    print("自动安装 paramiko 失败。")
+    tail = (proc.stderr or proc.stdout).strip().splitlines()[-4:]
+    if tail:
+        print("\n".join(tail))
+    return False
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:

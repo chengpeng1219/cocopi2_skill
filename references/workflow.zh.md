@@ -90,7 +90,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py status
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-它会无回显地提示密码，保存到 `.maixpy/device_credentials.local.json`，并验证登录。如果本机既没有 paramiko 也没有 sshpass，会提示一次性运行 `python -m pip install paramiko`。不要要求用户把密码发到对话里。
+它会无回显地提示密码，保存到 `.maixpy/device_credentials.local.json`，并验证登录。如果本机既没有 paramiko 也没有 sshpass，会自动使用当前 Python 安装 paramiko，不再要求确认。不要要求用户把密码发到对话里。
 
 ### 方式一：本地凭据配置
 

@@ -101,7 +101,7 @@ class DashboardTests(unittest.TestCase):
 
         self.assertEqual(state, "auth_failed")
         self.assertIn("auth", advice)
-        self.assertIn("pip install paramiko", advice)
+        self.assertIn("自动安装", advice)
 
     def test_collect_without_device_returns_setup_steps(self) -> None:
         with TemporaryDirectory() as tmp:

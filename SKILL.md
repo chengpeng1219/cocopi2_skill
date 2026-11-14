@@ -101,7 +101,7 @@ Preferred setup: ask the user to run `auth` in their own terminal. It prompts wi
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-If the machine has neither paramiko nor sshpass, `auth` says to install paramiko once (`python -m pip install paramiko`). Never ask the user to paste the password into chat.
+If the machine has neither paramiko nor sshpass, `auth` automatically installs paramiko with the current Python interpreter, without asking for confirmation. If installation fails, it prints the manual fallback. Never ask the user to paste the password into chat.
 
 Defaults:
 

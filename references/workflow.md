@@ -90,7 +90,7 @@ Preferred setup: ask the user to run this in their own terminal:
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-It prompts without echo, saves the password to `.maixpy/device_credentials.local.json`, and verifies the login. If neither paramiko nor sshpass is installed, it says to run `python -m pip install paramiko` once. Do not ask the user to paste the password into chat.
+It prompts without echo, saves the password to `.maixpy/device_credentials.local.json`, and verifies the login. If neither paramiko nor sshpass is installed, it automatically installs paramiko with the current Python interpreter, without confirmation. Do not ask the user to paste the password into chat.
 
 ### Path 1: Local credential config
 

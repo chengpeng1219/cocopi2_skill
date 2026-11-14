@@ -101,7 +101,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-如果本机既没有 paramiko 也没有 sshpass，`auth` 会提示一次性安装 paramiko（`python -m pip install paramiko`）。不要要求用户把密码发到对话里。
+如果本机既没有 paramiko 也没有 sshpass，`auth` 会自动使用当前 Python 安装 paramiko，不再要求用户确认。安装失败时才提示手动命令。不要要求用户把密码发到对话里。
 
 默认账号：
 

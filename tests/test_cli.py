@@ -74,6 +74,59 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("top-secret", stdout.getvalue())
         save.assert_called_once()
 
+    def test_auth_auto_installs_paramiko_without_confirmation(self) -> None:
+        stdout = io.StringIO()
+        fake_session = type(
+            "FakeSession",
+            (),
+            {
+                "run": lambda self, command, timeout=None: CommandResult(0, "__AUTH_OK__\n", ""),
+                "close": lambda self: None,
+            },
+        )()
+        config = {
+            "current_device": "dev",
+            "devices": {"dev": {"host": "192.168.1.2", "user": "root", "device_class": "maixcam2"}},
+        }
+        device = Device(host="192.168.1.2", user="root", device_class="maixcam2", password="top-secret")
+
+        with patch("scripts.maixpy_skill.cli.load_config", return_value=config):
+            with patch("scripts.maixpy_skill.cli.getpass.getpass", return_value="top-secret"):
+                with patch("scripts.maixpy_skill.cli.save_device_password"):
+                    with patch("scripts.maixpy_skill.cli.paramiko_available", return_value=False):
+                        with patch("scripts.maixpy_skill.cli.shutil.which", return_value=None):
+                            with patch("scripts.maixpy_skill.cli.install_paramiko", return_value=True) as install:
+                                with patch("scripts.maixpy_skill.cli.get_device", return_value=device):
+                                    with patch("scripts.maixpy_skill.cli.RemoteSession", return_value=fake_session):
+                                        with redirect_stdout(stdout):
+                                            code = cli.main(["auth"])
+
+        self.assertEqual(code, 0)
+        install.assert_called_once()
+        self.assertIn("自动安装 paramiko", stdout.getvalue())
+        self.assertIn("认证成功", stdout.getvalue())
+
+    def test_install_paramiko_uses_current_python(self) -> None:
+        completed = type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+        with patch("scripts.maixpy_skill.cli.subprocess.run", return_value=completed) as run:
+            ok = cli.install_paramiko()
+
+        self.assertTrue(ok)
+        command = run.call_args.args[0]
+        self.assertEqual(command[:3], [cli.sys.executable, "-m", "pip"])
+        self.assertIn("paramiko", command)
+
+    def test_install_paramiko_failure_reports_manual_fallback(self) -> None:
+        stdout = io.StringIO()
+        completed = type("Completed", (), {"returncode": 1, "stdout": "", "stderr": "network unavailable"})()
+        with patch("scripts.maixpy_skill.cli.subprocess.run", return_value=completed):
+            with redirect_stdout(stdout):
+                ok = cli.install_paramiko()
+
+        self.assertFalse(ok)
+        self.assertIn("自动安装 paramiko 失败", stdout.getvalue())
+        self.assertIn("network unavailable", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
