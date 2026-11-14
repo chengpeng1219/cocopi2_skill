@@ -1,0 +1,4 @@
+interface:
+  display_name: "CocoPi2"
+  short_description: "Check MaixCAM connection status, then develop, run, and debug MaixPy/MaixCDK apps."
+  default_prompt: "先用连接面板检查我的 MaixCAM/MaixCAM Pro/MaixCAM2 设备连接状态，再帮我开发并运行一个 MaixPy 或 MaixCDK 应用。"

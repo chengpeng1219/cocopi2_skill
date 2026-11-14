@@ -1,0 +1,5 @@
+.maixpy/
+__pycache__/
+*.pyc
+device_credentials.local.json
+*.log
