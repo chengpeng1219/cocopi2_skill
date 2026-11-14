@@ -8,6 +8,7 @@ from unittest.mock import patch
 from scripts.maixpy_skill.config import (
     ConfigError,
     get_device,
+    has_saved_password,
     normalize_device_class,
     save_config,
     save_device_password,
@@ -68,6 +69,13 @@ class ConfigTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             with patch.dict(os.environ, {"COCOPI2_CONFIG_DIR": tmp}):
                 self.assertEqual(state_dir(), Path(tmp))
+
+    def test_saved_password_is_distinguished_from_defaults(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            self.assertFalse(has_saved_password("dev", "192.168.1.2", "maixcam2", cwd=cwd))
+            save_device_password("192.168.1.2", "local-secret", name="dev", cwd=cwd)
+            self.assertTrue(has_saved_password("dev", "192.168.1.2", "maixcam2", cwd=cwd))
 
 
 if __name__ == "__main__":

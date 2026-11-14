@@ -157,6 +157,17 @@ def device_password(name: str, host: str, device_class: str, cwd: Path | None = 
     return default_password(device_class, cwd) or None
 
 
+def has_saved_password(name: str, host: str, device_class: str, cwd: Path | None = None) -> bool:
+    """Return True only for an explicitly saved device password, not defaults."""
+    credentials = load_credentials(cwd)
+    devices = credentials.get("devices", {})
+    for key in [name, host, device_class]:
+        raw = devices.get(key) if isinstance(devices, dict) else None
+        if isinstance(raw, dict) and raw.get("password"):
+            return True
+    return False
+
+
 def get_device(name: str | None = None, cwd: Path | None = None) -> Device:
     data = load_config(cwd)
     selected = name or data.get("current_device")

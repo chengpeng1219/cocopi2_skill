@@ -141,6 +141,49 @@ class CliTests(unittest.TestCase):
                 code = cli.main(["auth"])
         self.assertEqual(code, 2)
         self.assertIn("不是交互式终端", stdout.getvalue())
+        self.assertIn("无法自动打开终端", stdout.getvalue())
+
+    def test_connect_without_saved_password_does_not_install_paramiko(self) -> None:
+        stdout = io.StringIO()
+        config = {"current_device": None, "devices": {}}
+        with patch("scripts.maixpy_skill.cli.load_config", return_value=config):
+            with patch("scripts.maixpy_skill.cli.has_saved_password", return_value=False):
+                with patch("scripts.maixpy_skill.cli.paramiko_available", return_value=False):
+                    with patch("scripts.maixpy_skill.cli.shutil.which", return_value=None):
+                        with patch("scripts.maixpy_skill.cli.install_paramiko") as install:
+                            with redirect_stdout(stdout):
+                                code = cli.main(["connect", "--host", "192.168.0.64"])
+
+        self.assertEqual(code, 2)
+        install.assert_not_called()
+        self.assertIn("auth", stdout.getvalue())
+        self.assertIn("终端", stdout.getvalue())
+
+    def test_connect_with_saved_password_can_install_paramiko(self) -> None:
+        fake_session = type(
+            "FakeSession",
+            (),
+            {
+                "run": lambda self, command, timeout=None: CommandResult(
+                    0, "__OK__\nHOSTNAME=maixcam2-9c54\nMODEL=MaixCAM2\nARCH=aarch64\n", ""
+                ),
+                "close": lambda self: None,
+            },
+        )()
+        config = {"current_device": None, "devices": {}}
+        with patch("scripts.maixpy_skill.cli.load_config", return_value=config):
+            with patch("scripts.maixpy_skill.cli.has_saved_password", return_value=True):
+                with patch("scripts.maixpy_skill.cli.device_password", return_value="pw"):
+                    with patch("scripts.maixpy_skill.cli.paramiko_available", return_value=False):
+                        with patch("scripts.maixpy_skill.cli.shutil.which", return_value=None):
+                            with patch("scripts.maixpy_skill.cli.install_paramiko", return_value=True) as install:
+                                with patch("scripts.maixpy_skill.cli.set_device"):
+                                    with patch("scripts.maixpy_skill.cli.RemoteSession", return_value=fake_session):
+                                        with redirect_stdout(io.StringIO()):
+                                            code = cli.main(["connect", "--host", "192.168.0.64"])
+
+        self.assertEqual(code, 0)
+        install.assert_called_once()
 
     def test_auth_failed_login_does_not_overwrite_password(self) -> None:
         stdout = io.StringIO()
@@ -321,7 +364,7 @@ class CliTests(unittest.TestCase):
         with redirect_stdout(stdout):
             code = cli.main(["version"])
         self.assertEqual(code, 0)
-        self.assertIn("cocopi2-skill 1.7.0", stdout.getvalue())
+        self.assertIn("cocopi2-skill 1.8.0", stdout.getvalue())
 
     def test_update_without_git_checkout_prints_install_url(self) -> None:
         stdout = io.StringIO()

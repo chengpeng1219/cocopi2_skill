@@ -65,7 +65,7 @@ python <skill-dir>\scripts\maixpy_skill\cli.py <command>
 python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 ```
 
-它会尝试已保存/默认凭据，根据设备型号自动识别 MaixCAM2 / MaixCAM Pro，保存设备类型并输出简短结果。认证失败时只提示运行 `auth`，不倾倒诊断信息。
+它会尝试已保存/默认凭据，根据设备型号自动识别 MaixCAM2 / MaixCAM Pro，保存设备类型并输出简短结果。认证失败时只提示运行 `auth`，不倾倒诊断信息。如果没有保存过密码且本机缺少 paramiko/sshpass，`connect` 会停下并要求用户运行 `auth`，不会自行开始 pip 安装。
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py status
@@ -103,13 +103,13 @@ python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 - 本地凭据文件：`.maixpy/device_credentials.local.json`，需要时从 `device_credentials.local.example.json` 复制。
 - 终端输入：请用户在自己的终端运行 helper，并在 SSH 密码提示中输入。
 
-推荐先让用户在自己的终端运行 `auth`。它会无回显地提示密码，先验证再保存；密码错误不会覆盖已有凭据。保存后会把 `.maixpy/` 加入项目 `.gitignore`：
+推荐先让用户在自己的终端运行 `auth`。助手无法自动打开终端或代你输入密码。它会无回显地提示密码，先验证再保存；密码错误不会覆盖已有凭据。保存后会把 `.maixpy/` 加入项目 `.gitignore`：
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-如果本机既没有 paramiko 也没有 sshpass，`auth` 会自动使用当前 Python 安装 paramiko，不再要求用户确认。安装失败时才提示手动命令。不要要求用户把密码发到对话里。
+如果本机既没有 paramiko 也没有 sshpass，`auth` 会在用户于交互式终端输入密码后自动使用当前 Python 安装 paramiko，最多等待 90 秒；失败时提示手动命令。不要要求用户把密码发到对话里。
 
 默认账号：
 

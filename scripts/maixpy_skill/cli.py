@@ -19,6 +19,7 @@ if __package__ in {None, ""}:
         default_password,
         device_password,
         get_device,
+        has_saved_password,
         load_config,
         normalize_device_class,
         save_device_password,
@@ -34,6 +35,7 @@ else:
         default_password,
         device_password,
         get_device,
+        has_saved_password,
         load_config,
         normalize_device_class,
         save_device_password,
@@ -180,7 +182,8 @@ def _is_loopback(host: str) -> bool:
 
 def cmd_auth(args: argparse.Namespace) -> int:
     if not sys.stdin.isatty():
-        print("当前不是交互式终端。请在用户自己的终端运行 auth，或手动编辑 .maixpy/device_credentials.local.json。")
+        print("当前不是交互式终端。助手无法自动打开终端或代你输入密码。")
+        print("请在你自己的电脑终端运行 auth，或手动编辑 .maixpy/device_credentials.local.json。")
         return 2
 
     data = load_config()
@@ -243,12 +246,17 @@ def cmd_auth(args: argparse.Namespace) -> int:
 
 def install_paramiko() -> bool:
     """Install paramiko with the current Python interpreter."""
+    print("正在安装 paramiko（最多等待 90 秒）...")
     command = [
         sys.executable,
         "-m",
         "pip",
         "install",
         "--disable-pip-version-check",
+        "--timeout",
+        "15",
+        "--retries",
+        "1",
         "paramiko",
     ]
     try:
@@ -256,7 +264,7 @@ def install_paramiko() -> bool:
             command,
             text=True,
             capture_output=True,
-            timeout=180,
+            timeout=90,
             check=False,
         )
     except Exception as exc:
@@ -276,7 +284,10 @@ def install_paramiko() -> bool:
 
 def _auth_hint() -> str:
     cli = Path(__file__).resolve()
-    return f"认证未完成。请在终端运行：python \"{cli}\" auth"
+    return (
+        "认证未完成。助手无法自动打开终端或代你输入密码。"
+        f"请在你自己的电脑终端运行：python \"{cli}\" auth"
+    )
 
 
 def cmd_connect(args: argparse.Namespace) -> int:
@@ -303,11 +314,18 @@ def cmd_connect(args: argparse.Namespace) -> int:
     if not password:
         password = default_password(device_class)
 
-    if not paramiko_available() and not shutil.which("sshpass"):
-        if not password:
+    saved = has_saved_password(name, host, normalize_device_class(device_class))
+    backend_available = paramiko_available() or bool(shutil.which("sshpass"))
+    if not saved and not backend_available:
+        print("还没有保存过认证信息，且本机缺少 paramiko/sshpass。")
+        print(_auth_hint())
+        return 2
+
+    if not backend_available:
+        if not saved:
             print(_auth_hint())
             return 2
-        print("缺少认证组件，正在自动安装 paramiko...")
+        print("已找到保存的凭据，正在自动安装 paramiko...")
         if not install_paramiko():
             return 2
 

@@ -63,7 +63,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 python <skill-dir>/scripts/maixpy_skill/cli.py status
 ```
 
-`connect` tries saved/default credentials and detects the device class from the hardware model. If it reports authentication failure, use `auth`.
+`connect` tries saved/default credentials and detects the device class from the hardware model. If it reports authentication failure, use `auth`. If no password is saved and the machine lacks paramiko/sshpass, `connect` stops and points to `auth`; it does not install pip packages by itself.
 
 If the IP is unknown, ask exactly one question:
 
@@ -94,7 +94,7 @@ Preferred setup: ask the user to run this in their own terminal:
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-It prompts without echo, verifies the login first, and only then saves the password to `.maixpy/device_credentials.local.json`. A wrong password leaves existing credentials untouched. It also adds `.maixpy/` to the project `.gitignore`. If neither paramiko nor sshpass is installed, it automatically installs paramiko with the current Python interpreter, without confirmation. Do not ask the user to paste the password into chat.
+The assistant cannot open a terminal or type the password; the user must run `auth` in their own terminal. It prompts without echo, verifies the login first, and only then saves the password to `.maixpy/device_credentials.local.json`. A wrong password leaves existing credentials untouched. It also adds `.maixpy/` to the project `.gitignore`. If neither paramiko nor sshpass is installed, it automatically installs paramiko with the current Python interpreter after the password is entered, capped at 90 seconds. Do not ask the user to paste the password into chat.
 
 ### Path 1: Local credential config
 
@@ -243,5 +243,6 @@ Exiting development mode starts exactly one launcher daemon in the background. I
 - If `mode enter` reaches daemon startup but display refresh fails, treat it as failed and inspect stderr or `/tmp/launcher-daemon.log`.
 - If launcher processes are duplicated or the desktop is stuck, run `repair`.
 - Use `runs` to review recent deploy outcomes and frame paths.
+- If a command appears stuck at “installing paramiko”, stop it, then run `auth` in the user's own terminal; current versions cap that install at 90 seconds.
 - If the app hangs, inspect whether generated code has an exit path.
 - If output is unclear for a vision task, temporarily add or enable debug image saving and rerun with `--debug-images`. Remove or disable it before presenting final user-facing code unless the user explicitly asks to keep debug mode enabled.

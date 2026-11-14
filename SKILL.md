@@ -65,7 +65,7 @@ For the shortest path, use one command after the IP is known:
 python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 ```
 
-It tries saved/default credentials, detects `MaixCAM2` vs `MaixCAM Pro` from the device model, saves the device class, and prints a short result. If authentication fails, it points to `auth` instead of dumping diagnostics.
+It tries saved/default credentials, detects `MaixCAM2` vs `MaixCAM Pro` from the device model, saves the device class, and prints a short result. If authentication fails, it points to `auth` instead of dumping diagnostics. If no password has been saved and the machine lacks paramiko/sshpass, `connect` stops and asks the user to run `auth`; it does not start a pip install by itself.
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py status
@@ -103,13 +103,13 @@ Support exactly two SSH password paths:
 - Local credential file: `.maixpy/device_credentials.local.json`, copied from `device_credentials.local.example.json` when needed.
 - Terminal input: ask the user to run the helper in their own terminal and type the password into the SSH prompt.
 
-Preferred setup: ask the user to run `auth` in their own terminal. It prompts without echo, verifies before saving, and only then writes `.maixpy/device_credentials.local.json`. A wrong password does not overwrite existing credentials. It also adds `.maixpy/` to the project's `.gitignore`.
+Preferred setup: ask the user to run `auth` in their own terminal. The assistant cannot open a terminal or type the password. `auth` prompts without echo, verifies before saving, and only then writes `.maixpy/device_credentials.local.json`. A wrong password does not overwrite existing credentials. It also adds `.maixpy/` to the project's `.gitignore`.
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-If the machine has neither paramiko nor sshpass, `auth` automatically installs paramiko with the current Python interpreter, without asking for confirmation. If installation fails, it prints the manual fallback. Never ask the user to paste the password into chat.
+If the machine has neither paramiko nor sshpass, `auth` automatically installs paramiko with the current Python interpreter after the user enters a password in that interactive terminal. It caps installation at 90 seconds and prints the manual fallback if it fails. Never ask the user to paste the password into chat.
 
 Defaults:
 

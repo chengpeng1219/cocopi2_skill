@@ -63,7 +63,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 python <skill-dir>/scripts/maixpy_skill/cli.py status
 ```
 
-`connect` 会尝试已保存/默认凭据，并从硬件型号自动识别设备类型。认证失败时再用 `auth`。
+`connect` 会尝试已保存/默认凭据，并从硬件型号自动识别设备类型。认证失败时再用 `auth`。如果没有保存过密码且本机缺少 paramiko/sshpass，`connect` 会停下并提示 `auth`，不会自行安装 pip 包。
 
 如果不知道 IP，只问一句：
 
@@ -94,7 +94,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py status
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-它会无回显地提示密码，先验证登录，成功后才保存到 `.maixpy/device_credentials.local.json`。密码错误不会覆盖已有凭据；保存后会把 `.maixpy/` 加入项目 `.gitignore`。如果本机既没有 paramiko 也没有 sshpass，会自动使用当前 Python 安装 paramiko，不再要求确认。不要要求用户把密码发到对话里。
+助手无法自动打开终端或代你输入密码，用户必须在自己的终端运行 `auth`。它会无回显地提示密码，先验证登录，成功后才保存到 `.maixpy/device_credentials.local.json`。密码错误不会覆盖已有凭据；保存后会把 `.maixpy/` 加入项目 `.gitignore`。如果本机既没有 paramiko 也没有 sshpass，会在输入密码后自动使用当前 Python 安装 paramiko，最多等待 90 秒。不要要求用户把密码发到对话里。
 
 ### 方式一：本地凭据配置
 
@@ -243,5 +243,6 @@ python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
 - 如果 `mode enter` 已启动 daemon 但刷新显示失败，将其视为失败，并检查 stderr 或 `/tmp/launcher-daemon.log`。
 - 如果 launcher 进程重复或桌面卡住，运行 `repair`。
 - 用 `runs` 查看最近部署结果和帧图片路径。
+- 如果命令看起来卡在“正在安装 paramiko”，先停止，再让用户在自己的终端运行 `auth`；当前版本会把安装限制在 90 秒。
 - 如果应用卡住，检查生成代码是否有退出路径。
 - 如果视觉任务输出不清楚，临时添加或启用调试图片保存，并用 `--debug-images` 重新运行。最终输出给用户前需要移除或关闭，除非用户明确要求保留调试模式。
