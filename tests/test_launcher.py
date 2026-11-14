@@ -37,6 +37,13 @@ class LauncherCommandTests(unittest.TestCase):
         self.assertIn("&", command)
         self.assertIn("development_mode=exited", command)
 
+    def test_start_daemon_cleans_duplicates_and_requires_exactly_one(self) -> None:
+        command = launcher.start_launcher_daemon_command()
+        self.assertIn("count=$(", command)
+        self.assertIn("-gt 1", command)
+        self.assertIn("launcher_daemon=stopped", command)
+        self.assertIn("-eq 1", command)
+
     def test_refresh_display_uses_display_api_not_framebuffer(self) -> None:
         command = launcher.refresh_display_command()
         self.assertIn("display.Display()", command)

@@ -205,4 +205,25 @@ def save_device_password(host: str, password: str, name: str | None = None, cwd:
         os.chmod(path, 0o600)
     except OSError:
         pass
+    ensure_gitignore(cwd)
+    return path
+
+
+def ensure_gitignore(cwd: Path | None = None) -> Path:
+    """Keep the local credential directory out of the user's git repository."""
+    root = Path(cwd or Path.cwd())
+    path = root / ".gitignore"
+    entry = ".maixpy/"
+    lines: list[str] = []
+    if path.exists():
+        try:
+            lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError:
+            lines = []
+    if entry not in {line.strip() for line in lines}:
+        lines.append(entry)
+        try:
+            path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+        except OSError:
+            pass
     return path

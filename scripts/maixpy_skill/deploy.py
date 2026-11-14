@@ -1,6 +1,7 @@
 """One-shot deploy, run, frame capture, and launcher restore pipeline."""
 from __future__ import annotations
 
+import tarfile
 import time
 from pathlib import Path
 
@@ -57,7 +58,11 @@ if _capture_path:
 display.Display = _retrying_display
 
 script = sys.argv[1] if len(sys.argv) > 1 else "main.py"
-runpy.run_path(script, run_name="__main__")
+script_dir = os.path.dirname(os.path.abspath(script))
+if script_dir:
+    sys.path.insert(0, script_dir)
+    os.chdir(script_dir)
+runpy.run_path(os.path.basename(script), run_name="__main__")
 '''
 
 
@@ -111,12 +116,30 @@ def _pull_with_retry(session: RemoteSession, remote_path: str, local_path: Path,
     return False
 
 
-def _launch_detached(session: RemoteSession, remote_dir: str, env: str, log_name: str) -> str:
-    pid_file = f"{remote_dir}/{log_name}.pid"
+def _wait_for_frame(
+    session: RemoteSession,
+    remote_path: str,
+    local_path: Path,
+    *,
+    initial_wait: float,
+    timeout: float,
+) -> bool:
+    deadline = time.time() + max(timeout, 0)
+    if initial_wait > 0:
+        time.sleep(min(initial_wait, max(timeout, 0)))
+    while time.time() < deadline:
+        if _pull_with_retry(session, remote_path, local_path, attempts=1):
+            return True
+        time.sleep(0.5)
+    return _pull_with_retry(session, remote_path, local_path, attempts=1)
+
+
+def _launch_detached(session: RemoteSession, remote_dir: str, env: str, script_path: str) -> str:
+    pid_file = f"{remote_dir}/run.pid"
     command = (
         f"cd {remote_dir} && setsid -f sh -c 'echo $$ > {pid_file}; "
-        f"exec env {env} python3 run_wrapper.py main.py' "
-        f"> {log_name}.log 2>&1 < /dev/null"
+        f"exec env {env} python3 run_wrapper.py {script_path}' "
+        f"> run.log 2>&1 < /dev/null"
     )
     session.run(command, timeout=10)
     time.sleep(0.5)
@@ -124,9 +147,52 @@ def _launch_detached(session: RemoteSession, remote_dir: str, env: str, log_name
     return result.stdout.strip()
 
 
+def _process_alive(session: RemoteSession, pid: str) -> bool:
+    if not pid:
+        return False
+    result = session.run(f"kill -0 {pid} 2>/dev/null && echo alive || echo dead", timeout=5)
+    return "alive" in result.stdout
+
+
 def _kill_pid(session: RemoteSession, pid: str) -> None:
     if pid:
         session.run(f"kill {pid} 2>/dev/null || true", timeout=5)
+
+
+def _prepare_payload(
+    local_file: Path,
+    out_dir: Path,
+    session: RemoteSession,
+    remote_dir: str,
+    entry: str,
+) -> tuple[str, bool]:
+    if local_file.is_dir():
+        entry_path = local_file / entry
+        if not entry_path.is_file():
+            raise RuntimeError(f"entry file not found: {entry_path}")
+        archive = out_dir / "app.tar.gz"
+        with tarfile.open(archive, "w:gz") as tar:
+            for path in local_file.rglob("*"):
+                if not path.is_file():
+                    continue
+                relative = path.relative_to(local_file)
+                if any(part in {"__pycache__", ".git", ".maixpy"} for part in relative.parts):
+                    continue
+                if path.suffix == ".pyc":
+                    continue
+                tar.add(path, arcname=relative.as_posix())
+        _check(session.put(str(archive), f"{remote_dir}/app.tar.gz"), "upload app archive")
+        _check(
+            session.run(
+                f"mkdir -p {remote_dir}/app && tar -xzf {remote_dir}/app.tar.gz -C {remote_dir}/app",
+                timeout=30,
+            ),
+            "extract app",
+        )
+        return f"app/{entry}", True
+
+    _check(session.put(str(local_file), f"{remote_dir}/main.py"), "upload main.py")
+    return "main.py", False
 
 
 def _deploy_once(
@@ -140,6 +206,8 @@ def _deploy_once(
     wait: float,
     cwd: Path | None,
     reconnect_timeout: int,
+    capture_timeout: float,
+    entry: str,
 ) -> Path:
     run_id = logs.new_run_id(local_file)
     out_dir = logs.create_run_dir(run_id, cwd)
@@ -160,57 +228,50 @@ def _deploy_once(
 
         summary["development_mode"] = _ensure_dev_mode(session)
         _check(session.run(f"mkdir -p {remote_dir}/artifacts", timeout=10), "create remote dir")
-        _check(session.put(str(local_file), f"{remote_dir}/main.py"), "upload main.py")
         wrapper_path = out_dir / "run_wrapper.py"
         wrapper_path.write_text(RUN_WRAPPER, encoding="utf-8")
         _check(session.put(str(wrapper_path), f"{remote_dir}/run_wrapper.py"), "upload run wrapper")
 
-        base_env = f"MAIXPY_SKILL_RUN_DIR={remote_dir}"
+        script_path, is_directory = _prepare_payload(local_file, out_dir, session, remote_dir, entry)
+        summary["directory"] = is_directory
+        summary["entry"] = script_path
+
+        env = f"MAIXPY_SKILL_RUN_DIR={remote_dir} MAIXPY_DEBUG_IMAGES=0"
+        if capture:
+            env += f" MAIXPY_CAPTURE_PATH={remote_dir}/artifacts/frame.jpg"
 
         if background:
-            if capture:
-                capture_env = (
-                    f"{base_env} MAIXPY_DEBUG_IMAGES=1 "
-                    f"MAIXPY_CAPTURE_PATH={remote_dir}/artifacts/frame.jpg"
-                )
-                capture_pid = _launch_detached(session, remote_dir, capture_env, "capture")
-                summary["capture_pid"] = capture_pid
-                time.sleep(wait)
-                frame_path = out_dir / "frame.jpg"
-                summary["frame"] = (
-                    str(frame_path)
-                    if _pull_with_retry(session, f"{remote_dir}/artifacts/frame.jpg", frame_path)
-                    else None
-                )
-                _kill_pid(session, capture_pid)
-                time.sleep(2)
-
-            persistent_env = f"{base_env} MAIXPY_DEBUG_IMAGES=0"
-            pid = _launch_detached(session, remote_dir, persistent_env, "run")
+            pid = _launch_detached(session, remote_dir, env, script_path)
             summary["pid"] = pid
             summary["launch"] = f"PID={pid}"
-            time.sleep(1)
-        else:
-            env = f"{base_env} MAIXPY_DEBUG_IMAGES={'1' if capture else '0'}"
+            summary["running"] = _process_alive(session, pid)
             if capture:
-                env += f" MAIXPY_CAPTURE_PATH={remote_dir}/artifacts/frame.jpg"
-            command = f"cd {remote_dir} && timeout {timeout} env {env} python3 run_wrapper.py main.py"
+                frame_path = out_dir / "frame.jpg"
+                if _wait_for_frame(
+                    session,
+                    f"{remote_dir}/artifacts/frame.jpg",
+                    frame_path,
+                    initial_wait=wait,
+                    timeout=capture_timeout,
+                ):
+                    summary["frame"] = str(frame_path)
+                summary["running"] = _process_alive(session, pid)
+        else:
+            command = f"cd {remote_dir} && timeout {timeout} env {env} python3 run_wrapper.py {script_path}"
             result = session.run(command, timeout=timeout + 20)
             summary["launch"] = result.stdout.strip()
             summary["exit_code"] = result.returncode
+            summary["running"] = False
             if capture:
                 frame_path = out_dir / "frame.jpg"
-                summary["frame"] = (
-                    str(frame_path)
-                    if _pull_with_retry(session, f"{remote_dir}/artifacts/frame.jpg", frame_path)
-                    else None
-                )
+                if _pull_with_retry(session, f"{remote_dir}/artifacts/frame.jpg", frame_path):
+                    summary["frame"] = str(frame_path)
 
-        for log_name in ("capture", "run"):
-            log_result = session.run(f"cat {remote_dir}/{log_name}.log 2>/dev/null", timeout=10)
-            (out_dir / f"{log_name}.log").write_text(log_result.stdout, encoding="utf-8")
-            if log_name == "run":
-                summary["stdout_tail"] = log_result.stdout.strip()[-800:]
+        log_result = session.run(f"cat {remote_dir}/run.log 2>/dev/null", timeout=10)
+        (out_dir / "run.log").write_text(log_result.stdout, encoding="utf-8")
+        summary["stdout_tail"] = log_result.stdout.strip()[-800:]
+        if capture and not summary.get("frame"):
+            summary["capture_error"] = log_result.stdout.strip()[-500:]
 
         if restore:
             _kill_pid(session, str(summary.get("pid") or ""))
@@ -233,8 +294,10 @@ def deploy_file(
     wait: float = 2.0,
     cwd: Path | None = None,
     reconnect_timeout: int = 45,
+    capture_timeout: float = 10.0,
+    entry: str = "main.py",
 ) -> Path:
-    """Deploy one file, capture a frame, and optionally leave the app running."""
+    """Deploy one file or directory, capture a frame, and optionally leave it running."""
     local_file = local_file.resolve()
     last_error: Exception | None = None
     for attempt in range(2):
@@ -249,6 +312,8 @@ def deploy_file(
                 wait=wait,
                 cwd=cwd,
                 reconnect_timeout=reconnect_timeout,
+                capture_timeout=capture_timeout,
+                entry=entry,
             )
         except Exception as exc:
             last_error = exc

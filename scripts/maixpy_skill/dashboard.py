@@ -157,10 +157,14 @@ def _next_steps(status: dict[str, Any], python_cmd: str) -> list[str]:
         steps.append("22 端口连不上。检查 IP 是否正确、设备是否在线、路由器是否开启 AP 隔离、电脑防火墙是否放行。")
     if ssh.get("ok") is False and tcp.get("ok") is not False:
         cli = Path(__file__).resolve().parent / "cli.py"
-        steps.append(
-            f"SSH 认证未完成。请在终端运行 `python \"{cli}\" auth` 输入设备密码；"
-            "缺少 paramiko 时会自动安装，密码不会出现在对话里。"
-        )
+        error_text = (ssh.get("stderr") or "").lower()
+        if "permission denied" in error_text or "publickey" in error_text or not error_text:
+            steps.append(
+                f"SSH 认证未完成。请在终端运行 `python \"{cli}\" auth` 输入设备密码；"
+                "缺少 paramiko 时会自动安装，密码不会出现在对话里。"
+            )
+        else:
+            steps.append("SSH 连接失败。请检查设备是否卡住，必要时重启设备；持续失败时把最新 IP 告诉我。")
     if ssh.get("ok"):
         steps.append("连接正常。可以直接描述要开发的功能，或运行 run <file.py>。")
     return steps
@@ -202,14 +206,21 @@ def summarize(status: dict[str, Any]) -> tuple[str, str, str]:
         )
     if ssh.get("ok") is False:
         cli = Path(__file__).resolve().parent / "cli.py"
-        advice = (
-            f"网络可达但 SSH 登录失败。请在终端运行 `python \"{cli}\" auth` 输入密码；"
-            "缺少 paramiko 时会自动安装，密码不要发到对话里。"
-        )
+        error_text = (ssh.get("stderr") or "").lower()
+        if "permission denied" in error_text or "publickey" in error_text or not error_text:
+            advice = (
+                f"网络可达但 SSH 登录失败。请在终端运行 `python \"{cli}\" auth` 输入密码；"
+                "缺少 paramiko 时会自动安装，密码不要发到对话里。"
+            )
+            return (
+                "auth_failed",
+                "网络可达，但 SSH 登录未完成",
+                advice,
+            )
         return (
-            "auth_failed",
-            "网络可达，但 SSH 登录未完成",
-            advice,
+            "ssh_failed",
+            "SSH 连接失败",
+            "我会重试；如果持续失败，请重启设备或把最新 IP 告诉我。",
         )
     if dns.get("ok") is False:
         return (
@@ -428,6 +439,7 @@ def _html(status: dict[str, Any]) -> str:
         "connected": "ok",
         "unreachable": "bad",
         "auth_failed": "warn",
+        "ssh_failed": "bad",
         "unconfigured": "warn",
     }.get(state, "unknown")
 

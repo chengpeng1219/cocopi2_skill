@@ -11,11 +11,29 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from maixpy_skill import dashboard, deploy, discover, doctor, launcher, runner
-    from maixpy_skill.config import ConfigError, clear_device, get_device, load_config, save_device_password, set_device
+    from maixpy_skill.config import (
+        ConfigError,
+        Device,
+        clear_device,
+        get_device,
+        load_config,
+        normalize_device_class,
+        save_device_password,
+        set_device,
+    )
     from maixpy_skill.ssh import RemoteSession, paramiko_available, run_ssh
 else:
     from . import dashboard, deploy, discover, doctor, launcher, runner
-    from .config import ConfigError, clear_device, get_device, load_config, save_device_password, set_device
+    from .config import (
+        ConfigError,
+        Device,
+        clear_device,
+        get_device,
+        load_config,
+        normalize_device_class,
+        save_device_password,
+        set_device,
+    )
     from .ssh import RemoteSession, paramiko_available, run_ssh
 
 
@@ -52,6 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-deep", action="store_true", help="skip network and SSH checks")
+    p.add_argument("--allow-lan", action="store_true", help="allow binding the dashboard to a non-loopback address")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("auth", help="securely prompt for and save the device SSH password")
@@ -69,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--restore", action="store_true", help="stop the app and restore the launcher when done")
     p.add_argument("--wait", type=float, default=2.0, help="seconds before capturing a background frame")
     p.add_argument("--reconnect-timeout", type=int, default=45)
+    p.add_argument("--capture-timeout", type=float, default=10.0, help="maximum seconds to wait for a frame")
+    p.add_argument("--entry", default="main.py", help="entry file inside a directory deployment")
     p.set_defaults(func=cmd_deploy)
 
     p = sub.add_parser("device")
@@ -120,11 +141,22 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    if not _is_loopback(args.host) and not args.allow_lan:
+        print("为避免局域网暴露，serve 默认只允许本机。确实需要局域网访问请加 --allow-lan。")
+        return 2
     dashboard.serve(host=args.host, port=args.port, deep=not args.no_deep)
     return 0
 
 
+def _is_loopback(host: str) -> bool:
+    return host in {"127.0.0.1", "localhost", "::1"}
+
+
 def cmd_auth(args: argparse.Namespace) -> int:
+    if not sys.stdin.isatty():
+        print("当前不是交互式终端。请在用户自己的终端运行 auth，或手动编辑 .maixpy/device_credentials.local.json。")
+        return 2
+
     data = load_config()
     current = data.get("current_device")
     raw = data.get("devices", {}).get(current) if current else None
@@ -136,16 +168,15 @@ def cmd_auth(args: argparse.Namespace) -> int:
     user = args.user or (raw or {}).get("user") or "root"
     device_class = args.device_class or (raw or {}).get("device_class") or "maixcam2"
     name = args.name or current or host
-    if raw is None:
-        set_device(host, user, name, device_class)
 
-    password = getpass.getpass(f"请输入 {user}@{host} 的 SSH 密码（输入不会显示）: ")
+    try:
+        password = getpass.getpass(f"请输入 {user}@{host} 的 SSH 密码（输入不会显示）: ")
+    except (EOFError, KeyboardInterrupt):
+        print("\n已取消。")
+        return 2
     if not password:
         print("未输入密码，已取消。")
         return 2
-
-    save_device_password(host, password, name=name)
-    print("密码已保存到 .maixpy/device_credentials.local.json。")
 
     if not paramiko_available() and not shutil.which("sshpass"):
         print("本机缺少 paramiko 和 sshpass，正在自动安装 paramiko...")
@@ -153,20 +184,34 @@ def cmd_auth(args: argparse.Namespace) -> int:
             print("请手动运行：python -m pip install paramiko")
             return 2
 
-    device = get_device()
+    test_device = Device(
+        host=host,
+        user=user,
+        name=name,
+        device_class=normalize_device_class(device_class),
+        password=password,
+    )
     try:
-        session = RemoteSession(device, timeout=12)
+        session = RemoteSession(test_device, timeout=12)
         result = session.run("echo __AUTH_OK__", timeout=10)
         session.close()
     except Exception as exc:
         print(f"认证测试失败：{exc}")
+        print("密码未保存，旧凭据保持不变。")
         return 1
 
     if result.returncode == 0 and "__AUTH_OK__" in result.stdout:
-        print("认证成功，设备已连接。")
+        try:
+            set_device(host, user, name, device_class)
+            save_device_password(host, password, name=name)
+        except Exception as exc:
+            print(f"认证成功，但保存配置失败：{exc}")
+            return 1
+        print("认证成功，密码已保存，设备已连接。")
         return 0
     detail = (result.stderr or result.stdout).strip()[:200]
     print(f"认证失败：{detail}")
+    print("密码未保存，旧凭据保持不变。")
     return 1
 
 
@@ -214,11 +259,27 @@ def cmd_deploy(args: argparse.Namespace) -> int:
         restore=args.restore,
         wait=args.wait,
         reconnect_timeout=args.reconnect_timeout,
+        capture_timeout=args.capture_timeout,
+        entry=args.entry,
     )
     print(f"DEPLOY_DIR={out_dir}")
     summary_path = out_dir / "summary.json"
+    summary: dict[str, object] = {}
     if summary_path.exists():
-        print(summary_path.read_text(encoding="utf-8"), end="")
+        text = summary_path.read_text(encoding="utf-8")
+        print(text, end="")
+        try:
+            summary = json.loads(text)
+        except json.JSONDecodeError:
+            summary = {}
+    if not args.no_capture and not summary.get("frame"):
+        print("抓帧失败：应用没有显示画面或未在限定时间内显示。")
+        return 1
+    if not args.no_background and not summary.get("running"):
+        print("后台进程未存活，请检查 run.log。")
+        return 1
+    if args.no_background and summary.get("exit_code") not in (0, 124):
+        return 1
     return 0
 
 

@@ -42,7 +42,7 @@ For a browser view, run:
 python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 ```
 
-Then open `http://127.0.0.1:8765/`. The server binds to localhost by default and never renders passwords. `POST /api/check` re-runs the checks. Only use `--host 0.0.0.0` when LAN exposure is explicitly requested.
+Then open `http://127.0.0.1:8765/`. The server binds to localhost by default and never renders passwords. `POST /api/check` re-runs the checks. Binding a non-loopback address requires `--allow-lan`.
 
 Internal requirements (the assistant handles these; do not turn them into user tasks):
 
@@ -90,7 +90,7 @@ Preferred setup: ask the user to run this in their own terminal:
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-It prompts without echo, saves the password to `.maixpy/device_credentials.local.json`, and verifies the login. If neither paramiko nor sshpass is installed, it automatically installs paramiko with the current Python interpreter, without confirmation. Do not ask the user to paste the password into chat.
+It prompts without echo, verifies the login first, and only then saves the password to `.maixpy/device_credentials.local.json`. A wrong password leaves existing credentials untouched. It also adds `.maixpy/` to the project `.gitignore`. If neither paramiko nor sshpass is installed, it automatically installs paramiko with the current Python interpreter, without confirmation. Do not ask the user to paste the password into chat.
 
 ### Path 1: Local credential config
 
@@ -170,7 +170,7 @@ For screen-facing apps, prefer the one-shot deploy pipeline:
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-It enters development mode once, uploads the file, captures a real frame, and leaves the app running. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. Use `--restore` to stop the app and restore the launcher.
+It enters development mode once, uploads a file or directory, runs the app once, captures a real frame, and leaves the same process running. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. Use `--restore` to stop the app and restore the launcher. Directory deployments use `--entry`; `--capture-timeout` controls the first-frame wait. Missing frames or dead background processes return a non-zero exit code.
 
 Run user code through:
 
@@ -230,7 +230,7 @@ The `run` helper executes the development-mode entry flow before every code run.
 2. Stop any other running application under `/maixapp/apps/`.
 3. Run a short MaixPy `display.Display()` refresh program to refresh the screen and verify development mode is usable.
 
-Exiting development mode starts the launcher daemon in the background.
+Exiting development mode starts exactly one launcher daemon in the background. If multiple daemon processes are found, they are stopped first to avoid display contention.
 
 ## Failure Handling
 

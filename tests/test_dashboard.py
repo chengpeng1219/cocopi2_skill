@@ -103,6 +103,25 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("auth", advice)
         self.assertIn("自动安装", advice)
 
+    def test_non_auth_ssh_failure_is_not_misreported_as_password_problem(self) -> None:
+        status = {
+            "configured": True,
+            "deep": True,
+            "device": {"host": "192.168.0.64"},
+            "dns": {"ok": True},
+            "tcp": {"ok": True},
+            "ssh": {"ok": False, "stderr": "Connection reset by peer"},
+            "remote": None,
+            "environment": {"auth_backend": "paramiko"},
+        }
+
+        state, summary, advice = dashboard.summarize(status)
+
+        self.assertEqual(state, "ssh_failed")
+        self.assertIn("SSH 连接失败", summary)
+        self.assertIn("重启", advice)
+        self.assertNotIn("auth", advice)
+
     def test_collect_without_device_returns_setup_steps(self) -> None:
         with TemporaryDirectory() as tmp:
             with patch("scripts.maixpy_skill.dashboard.doctor.check", return_value=ENV):

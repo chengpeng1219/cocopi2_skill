@@ -71,7 +71,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py status
 python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 ```
 
-打开 `http://127.0.0.1:8765/`。默认只绑定本机；`/api/status` 返回 JSON，`POST /api/check` 会重新检测。面板不会显示密码。只有用户明确需要局域网访问时才使用 `--host 0.0.0.0`。
+打开 `http://127.0.0.1:8765/`。默认只绑定本机；`/api/status` 返回 JSON，`POST /api/check` 会重新检测。面板不会显示密码。绑定非本机地址必须显式加 `--allow-lan`。
 
 内部依赖（不要变成用户的任务）：
 
@@ -95,7 +95,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 - 本地凭据文件：`.maixpy/device_credentials.local.json`，需要时从 `device_credentials.local.example.json` 复制。
 - 终端输入：请用户在自己的终端运行 helper，并在 SSH 密码提示中输入。
 
-推荐先让用户在自己的终端运行 `auth`。它会无回显地提示密码，保存到 `.maixpy/device_credentials.local.json`，并用 paramiko 或 sshpass 验证登录：
+推荐先让用户在自己的终端运行 `auth`。它会无回显地提示密码，先验证再保存；密码错误不会覆盖已有凭据。保存后会把 `.maixpy/` 加入项目 `.gitignore`：
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
@@ -138,13 +138,13 @@ python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
 ```
 
-屏幕类应用优先使用 `deploy`。它会进入一次开发模式、上传文件、抓取真实画面，并让应用继续运行：
+屏幕类应用优先使用 `deploy`。它会进入一次开发模式，上传文件或目录，只运行一次应用，抓取真实画面，并让同一个进程继续运行：
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。`--restore` 会停止应用并恢复桌面；`--no-capture` 跳过抓帧；`--no-background` 前台运行到超时。部署流程会自动处理连接中断、避免反复初始化显示，并在没有 sshpass 时回退到 paramiko。
+汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。`--restore` 会停止应用并恢复桌面；`--no-capture` 跳过抓帧；`--no-background` 前台运行到超时；`--capture-timeout` 控制等待首帧的时间。目录部署用 `--entry` 指定入口（默认 `main.py`）。抓帧失败或后台进程退出时命令会返回非零。
 
 `run` 命令每次执行时都必须先进入并验证开发模式，然后在运行用户代码前停止并复查 `/maixapp/apps/` 下正在运行的应用。
 

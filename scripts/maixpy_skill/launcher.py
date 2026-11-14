@@ -17,9 +17,14 @@ def daemon_running_test_command() -> str:
     return " || ".join(f"pgrep -f {pattern!r} >/dev/null" for pattern in DAEMON_MATCH_PATTERNS)
 
 
+def daemon_count_command() -> str:
+    return "ps x | grep -E '/launcher[_]daemon' | grep -v grep | wc -l"
+
+
 def status_command() -> str:
     return (
-        f"if {daemon_running_test_command()}; then echo daemon=running; else echo daemon=stopped; fi; "
+        f"count=$({daemon_count_command()}); echo daemon_count=$count; "
+        "if [ \"$count\" -gt 0 ]; then echo daemon=running; else echo daemon=stopped; fi; "
         f"if ps x | grep -F {LAUNCHER!r} | grep -v grep | grep -v launcher_daemon > /dev/null; then echo launcher=running; else echo launcher=stopped; fi; "
         "if [ -f /maixapp/auto_start.txt ]; then printf 'autostart='; cat /maixapp/auto_start.txt; else echo autostart=none; fi"
     )
@@ -34,15 +39,25 @@ def kill_launcher_daemon_command() -> str:
 
 
 def start_launcher_daemon_command() -> str:
+    count = daemon_count_command()
     return (
+        f"count=$({count}); "
+        "if [ \"$count\" -gt 1 ]; then "
+        f"{kill_launcher_daemon_command()}; "
+        f"sleep 1; count=$({count}); "
+        "fi; "
+        "if [ \"$count\" -eq 0 ]; then "
+        f"pkill -f {DAEMON_MATCH_PATTERNS[0]!r} >/dev/null 2>&1 || true; "
+        "sleep 0.2; "
         f"if test -x {LAUNCHER_DAEMON!r}; then "
         f"nohup {LAUNCHER_DAEMON!r} >/tmp/launcher-daemon.log 2>&1 & "
         f"elif test -x {LAUNCHER!r}; then "
         f"nohup {LAUNCHER!r} daemon >/tmp/launcher-daemon.log 2>&1 & "
         "else echo launcher_daemon=missing >&2; exit 1; "
+        "fi; sleep 0.5; "
+        f"count=$({count}); "
         "fi; "
-        "sleep 0.5; "
-        f"if {daemon_running_test_command()}; then echo daemon=running; else echo daemon=not_running >&2; exit 1; fi"
+        "if [ \"$count\" -eq 1 ]; then echo daemon=running; else echo daemon_count=$count >&2; exit 1; fi"
     )
 
 

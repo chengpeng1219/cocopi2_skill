@@ -42,7 +42,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py status
 python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 ```
 
-打开 `http://127.0.0.1:8765/`。默认只监听本机且不会显示密码；`POST /api/check` 会重新检测。只有明确需要局域网访问时才使用 `--host 0.0.0.0`。
+打开 `http://127.0.0.1:8765/`。默认只监听本机且不会显示密码；`POST /api/check` 会重新检测。绑定非本机地址必须显式加 `--allow-lan`。
 
 内部依赖（由助手处理，不要变成用户任务）：
 
@@ -90,7 +90,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py status
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
 ```
 
-它会无回显地提示密码，保存到 `.maixpy/device_credentials.local.json`，并验证登录。如果本机既没有 paramiko 也没有 sshpass，会自动使用当前 Python 安装 paramiko，不再要求确认。不要要求用户把密码发到对话里。
+它会无回显地提示密码，先验证登录，成功后才保存到 `.maixpy/device_credentials.local.json`。密码错误不会覆盖已有凭据；保存后会把 `.maixpy/` 加入项目 `.gitignore`。如果本机既没有 paramiko 也没有 sshpass，会自动使用当前 Python 安装 paramiko，不再要求确认。不要要求用户把密码发到对话里。
 
 ### 方式一：本地凭据配置
 
@@ -170,7 +170,7 @@ MaixCAM2 使用：
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-它会进入一次开发模式、上传文件、抓取真实画面，并让应用继续运行。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。需要停止应用并恢复桌面时加 `--restore`。
+它会进入一次开发模式，上传文件或目录，只运行一次应用，抓取真实画面，并让同一个进程继续运行。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。需要停止应用并恢复桌面时加 `--restore`。目录部署用 `--entry` 指定入口，`--capture-timeout` 控制首帧等待时间；抓帧失败或后台进程退出时返回非零。
 
 通过 helper 运行用户代码：
 
@@ -230,7 +230,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
 2. 停止 `/maixapp/apps/` 下其他正在运行的应用。
 3. 运行一个简短的 MaixPy `display.Display()` 刷新显示程序，以刷新屏幕并验证开发模式可用。
 
-退出开发模式会在后台启动 launcher daemon。
+退出开发模式会在后台启动且只启动一个 launcher daemon。如果发现多个 daemon 进程，会先全部停止，避免争抢显示。
 
 ## 失败处理
 

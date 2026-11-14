@@ -59,6 +59,7 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(data["devices"]["192.168.1.2"]["password"], "local-secret")
             self.assertEqual(data["devices"]["dev"]["password"], "local-secret")
             self.assertFalse((cwd / ".maixpy" / "config.json").exists())
+            self.assertIn(".maixpy/", (cwd / ".gitignore").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

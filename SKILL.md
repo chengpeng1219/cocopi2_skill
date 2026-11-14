@@ -71,7 +71,7 @@ For a browser view:
 python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 ```
 
-Open `http://127.0.0.1:8765/`. The server binds to localhost by default, returns the same status as JSON at `/api/status`, and re-checks on `POST /api/check`. It never renders passwords. Use `--host 0.0.0.0` only when the user deliberately wants LAN access.
+Open `http://127.0.0.1:8765/`. The server binds to localhost by default, returns the same status as JSON at `/api/status`, and re-checks on `POST /api/check`. It never renders passwords. A non-loopback `--host` requires the explicit `--allow-lan` flag.
 
 Internal requirements (do not turn these into tasks for the user):
 
@@ -95,7 +95,7 @@ Support exactly two SSH password paths:
 - Local credential file: `.maixpy/device_credentials.local.json`, copied from `device_credentials.local.example.json` when needed.
 - Terminal input: ask the user to run the helper in their own terminal and type the password into the SSH prompt.
 
-Preferred setup: ask the user to run `auth` in their own terminal. It prompts without echo, saves the password to `.maixpy/device_credentials.local.json`, and verifies the login with paramiko or sshpass:
+Preferred setup: ask the user to run `auth` in their own terminal. It prompts without echo, verifies before saving, and only then writes `.maixpy/device_credentials.local.json`. A wrong password does not overwrite existing credentials. It also adds `.maixpy/` to the project's `.gitignore`.
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py auth
@@ -138,13 +138,13 @@ python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
 ```
 
-For a screen-facing app, prefer `deploy`. It enters development mode once, uploads the file, captures a real frame, and leaves the app running:
+For a screen-facing app, prefer `deploy`. It enters development mode once, uploads a file or directory, runs the app once, captures a real frame, and leaves that same process running:
 
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. `--restore` stops the app and restores the launcher; `--no-capture` skips the frame; `--no-background` runs in the foreground until the timeout. The deploy pipeline retries connection loss, avoids repeated display initialization, and falls back to paramiko when `sshpass` is unavailable.
+Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. `--restore` stops the app and restores the launcher; `--no-capture` skips the frame; `--no-background` runs in the foreground until the timeout; `--capture-timeout` controls how long to wait for the first frame. Directory deployments use `--entry` (default `main.py`). The command exits non-zero if the frame is missing or a background process dies.
 
 The `run` command must enter and verify development mode on every invocation, then stop and re-check applications under `/maixapp/apps/` before executing user code.
 
