@@ -24,7 +24,7 @@ class LauncherCommandTests(unittest.TestCase):
 
     def test_enter_stops_daemon_and_refreshes_display(self) -> None:
         command = launcher.enter_command()
-        self.assertIn("pkill -f '/maixapp/apps/launcher/launcher[_]daemon'", command)
+        self.assertIn("pkill -f '^/maixapp/apps/launcher/launcher_daemon$'", command)
         self.assertIn("maixapp_apps=stopped", command)
         self.assertIn("display_refreshed=ok", command)
         self.assertIn("development_mode=entered", command)

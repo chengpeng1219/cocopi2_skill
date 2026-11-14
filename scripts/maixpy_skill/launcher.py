@@ -10,30 +10,32 @@ DAEMON_MATCH_PATTERNS = (
     "/maixapp/apps/launcher/[l]auncher daemon",
     "/maixapp/apps/launcher/launcher[_]daemon",
 )
+DAEMON_EXACT = "^/maixapp/apps/launcher/launcher_daemon$"
+UI_EXACT = "^/maixapp/apps/launcher/launcher daemon$"
 MAIXAPP_APPS_ROOT = "/maixapp/apps/"
 
 
 def daemon_running_test_command() -> str:
-    return " || ".join(f"pgrep -f {pattern!r} >/dev/null" for pattern in DAEMON_MATCH_PATTERNS)
+    return f"pgrep -f {DAEMON_EXACT!r} >/dev/null || pgrep -f {UI_EXACT!r} >/dev/null"
 
 
 def daemon_count_command() -> str:
-    return "ps x | grep -E '/launcher[_]daemon' | grep -v grep | wc -l"
+    return f"pgrep -f {DAEMON_EXACT!r} | wc -l"
 
 
 def status_command() -> str:
     return (
         f"count=$({daemon_count_command()}); echo daemon_count=$count; "
         "if [ \"$count\" -gt 0 ]; then echo daemon=running; else echo daemon=stopped; fi; "
-        f"if ps x | grep -F {LAUNCHER!r} | grep -v grep | grep -v launcher_daemon > /dev/null; then echo launcher=running; else echo launcher=stopped; fi; "
+        f"if pgrep -f {UI_EXACT!r} > /dev/null; then echo launcher=running; else echo launcher=stopped; fi; "
         "if [ -f /maixapp/auto_start.txt ]; then printf 'autostart='; cat /maixapp/auto_start.txt; else echo autostart=none; fi"
     )
 
 
 def kill_launcher_daemon_command() -> str:
     return (
-        f"pkill -f {DAEMON_MATCH_PATTERNS[1]!r} >/dev/null 2>&1 || true; "
-        f"pkill -f {DAEMON_MATCH_PATTERNS[0]!r} >/dev/null 2>&1 || true; "
+        f"pkill -f {DAEMON_EXACT!r} >/dev/null 2>&1 || true; "
+        f"pkill -f {UI_EXACT!r} >/dev/null 2>&1 || true; "
         "echo launcher_daemon=stopped"
     )
 
@@ -47,7 +49,7 @@ def start_launcher_daemon_command() -> str:
         f"sleep 1; count=$({count}); "
         "fi; "
         "if [ \"$count\" -eq 0 ]; then "
-        f"pkill -f {DAEMON_MATCH_PATTERNS[0]!r} >/dev/null 2>&1 || true; "
+        f"pkill -f {UI_EXACT!r} >/dev/null 2>&1 || true; "
         "sleep 0.2; "
         f"if test -x {LAUNCHER_DAEMON!r}; then "
         f"nohup {LAUNCHER_DAEMON!r} >/tmp/launcher-daemon.log 2>&1 & "
