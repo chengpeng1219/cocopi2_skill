@@ -41,6 +41,9 @@ class Device:
 
 
 def state_dir(cwd: Path | None = None) -> Path:
+    override = os.environ.get("COCOPI2_CONFIG_DIR")
+    if override:
+        return Path(override).expanduser()
     return (cwd or Path.cwd()) / ".maixpy"
 
 

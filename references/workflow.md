@@ -26,6 +26,8 @@ python <skill-dir>\scripts\maixpy_skill\cli.py <command>
 
 Run helper commands from the user's current project directory so all state is stored under that project's `.maixpy/` folder.
 
+Set `COCOPI2_CONFIG_DIR` to reuse one device configuration across projects.
+
 ## Connection Dashboard
 
 Start first use with the dashboard instead of guessing what the user needs:
@@ -172,7 +174,7 @@ For screen-facing apps, prefer the one-shot deploy pipeline:
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-It enters development mode once, uploads a file or directory, runs the app once, captures a real frame, and leaves the same process running. Progress is printed to stderr (`--quiet` suppresses it), timings are stored in `summary.json`, and setup/launch failures restore the launcher automatically. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. Use `--restore` to stop a healthy app and restore the launcher. Directory deployments use `--entry`; `--capture-timeout` controls the first-frame wait. Missing frames or dead background processes return a non-zero exit code.
+It enters development mode once, uploads a file or directory, runs the app once, captures a real frame, and leaves the same process running. Progress is printed to stderr (`--quiet` suppresses it), timings are stored in `summary.json`, and setup/launch failures restore the launcher automatically. Directory deployments sync only changed files via a SHA-256 manifest under `/tmp/maixpy_skill/cache/`. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. Use `--restore` to stop a healthy app and restore the launcher. Directory deployments use `--entry`; `--capture-timeout` controls the first-frame wait. Missing frames or dead background processes return a non-zero exit code. `version` shows the installed version; `update` pulls a git checkout.
 
 Run user code through:
 

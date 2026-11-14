@@ -1,7 +1,10 @@
 """One-shot deploy, run, frame capture, and launcher restore pipeline."""
 from __future__ import annotations
 
-import tarfile
+import hashlib
+import json
+import re
+import tempfile
 import time
 from pathlib import Path
 
@@ -165,34 +168,86 @@ def _prepare_payload(
     session: RemoteSession,
     remote_dir: str,
     entry: str,
-) -> tuple[str, bool]:
+) -> tuple[str, bool, dict[str, int]]:
     if local_file.is_dir():
         entry_path = local_file / entry
         if not entry_path.is_file():
             raise RuntimeError(f"entry file not found: {entry_path}")
-        archive = out_dir / "app.tar.gz"
-        with tarfile.open(archive, "w:gz") as tar:
-            for path in local_file.rglob("*"):
-                if not path.is_file():
-                    continue
-                relative = path.relative_to(local_file)
-                if any(part in {"__pycache__", ".git", ".maixpy"} for part in relative.parts):
-                    continue
-                if path.suffix == ".pyc":
-                    continue
-                tar.add(path, arcname=relative.as_posix())
-        _check(session.put(str(archive), f"{remote_dir}/app.tar.gz"), "upload app archive")
-        _check(
-            session.run(
-                f"mkdir -p {remote_dir}/app && tar -xzf {remote_dir}/app.tar.gz -C {remote_dir}/app",
-                timeout=30,
-            ),
-            "extract app",
-        )
-        return f"app/{entry}", True
+        cache_key = _cache_key(local_file)
+        remote_cache = f"/tmp/maixpy_skill/cache/{cache_key}"
+        _check(session.run(f"mkdir -p {remote_cache}", timeout=10), "create app cache")
+        stats = _sync_directory(session, local_file, remote_cache)
+        return f"{remote_cache}/{entry}", True, stats
 
     _check(session.put(str(local_file), f"{remote_dir}/main.py"), "upload main.py")
-    return "main.py", False
+    return "main.py", False, {}
+
+
+def _cache_key(local_dir: Path) -> str:
+    digest = hashlib.sha256(str(local_dir.resolve()).encode("utf-8")).hexdigest()[:10]
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", local_dir.name)[:32] or "app"
+    return f"{safe}-{digest}"
+
+
+def _file_manifest(root: Path) -> dict[str, str]:
+    manifest: dict[str, str] = {}
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(root)
+        if any(part in {"__pycache__", ".git", ".maixpy"} for part in relative.parts):
+            continue
+        if path.suffix == ".pyc":
+            continue
+        manifest[relative.as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return manifest
+
+
+def _sync_directory(session: RemoteSession, local_dir: Path, remote_dir: str) -> dict[str, int]:
+    local_manifest = _file_manifest(local_dir)
+    remote_manifest: dict[str, str] = {}
+    uploaded = 0
+    skipped = 0
+    removed = 0
+
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8") as temp:
+        manifest_path = Path(temp.name)
+
+    try:
+        try:
+            manifest_result = session.get(f"{remote_dir}/manifest.json", str(manifest_path))
+        except Exception:
+            manifest_result = None
+        if manifest_result is not None and manifest_result.returncode == 0:
+            try:
+                loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+                if isinstance(loaded, dict):
+                    remote_manifest = {str(key): str(value) for key, value in loaded.items()}
+            except (OSError, json.JSONDecodeError):
+                remote_manifest = {}
+
+        for relative, digest in local_manifest.items():
+            if remote_manifest.get(relative) == digest:
+                skipped += 1
+                continue
+            remote_path = f"{remote_dir}/{relative}"
+            remote_parent = remote_path.rsplit("/", 1)[0]
+            _check(session.run(f"mkdir -p {remote_parent}", timeout=10), f"create {remote_parent}")
+            _check(session.put(str(local_dir / relative), remote_path), f"upload {relative}")
+            uploaded += 1
+
+        for relative in set(remote_manifest) - set(local_manifest):
+            session.run(f"rm -f {remote_dir}/{relative}", timeout=5)
+            removed += 1
+
+        manifest_path.write_text(json.dumps(local_manifest, sort_keys=True), encoding="utf-8")
+        _check(session.put(str(manifest_path), f"{remote_dir}/manifest.json"), "upload manifest")
+        return {"uploaded": uploaded, "skipped": skipped, "removed": removed}
+    finally:
+        try:
+            manifest_path.unlink()
+        except OSError:
+            pass
 
 
 def _deploy_once(
@@ -249,9 +304,12 @@ def _deploy_once(
         wrapper_path.write_text(RUN_WRAPPER, encoding="utf-8")
         _check(session.put(str(wrapper_path), f"{remote_dir}/run_wrapper.py"), "upload run wrapper")
 
-        script_path, is_directory = _prepare_payload(local_file, out_dir, session, remote_dir, entry)
+        script_path, is_directory, sync_stats = _prepare_payload(
+            local_file, out_dir, session, remote_dir, entry
+        )
         summary["directory"] = is_directory
         summary["entry"] = script_path
+        summary["sync"] = sync_stats
         mark("upload")
         note("启动应用...")
 

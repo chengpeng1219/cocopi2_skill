@@ -1,7 +1,9 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import json
+import os
 import unittest
+from unittest.mock import patch
 
 from scripts.maixpy_skill.config import (
     ConfigError,
@@ -10,6 +12,7 @@ from scripts.maixpy_skill.config import (
     save_config,
     save_device_password,
     set_device,
+    state_dir,
 )
 
 
@@ -60,6 +63,11 @@ class ConfigTests(unittest.TestCase):
             self.assertEqual(data["devices"]["dev"]["password"], "local-secret")
             self.assertFalse((cwd / ".maixpy" / "config.json").exists())
             self.assertIn(".maixpy/", (cwd / ".gitignore").read_text(encoding="utf-8"))
+
+    def test_global_config_dir_override(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with patch.dict(os.environ, {"COCOPI2_CONFIG_DIR": tmp}):
+                self.assertEqual(state_dir(), Path(tmp))
 
 
 if __name__ == "__main__":

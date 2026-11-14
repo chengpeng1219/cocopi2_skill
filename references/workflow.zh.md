@@ -26,6 +26,8 @@ python <skill-dir>\scripts\maixpy_skill\cli.py <command>
 
 从用户当前项目目录运行 helper，这样所有状态都会写入该项目的 `.maixpy/` 文件夹。
 
+设置 `COCOPI2_CONFIG_DIR` 可以在多个项目间复用同一份设备配置。
+
 ## 连接面板
 
 首次使用先看连接面板，不要靠猜：
@@ -172,7 +174,7 @@ MaixCAM2 使用：
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-它会进入一次开发模式，上传文件或目录，只运行一次应用，抓取真实画面，并让同一个进程继续运行。进度输出到 stderr（`--quiet` 可关闭），耗时写入 `summary.json`；安装/启动失败会自动恢复桌面。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。需要停止正常应用并恢复桌面时加 `--restore`。目录部署用 `--entry` 指定入口，`--capture-timeout` 控制首帧等待时间；抓帧失败或后台进程退出时返回非零。
+它会进入一次开发模式，上传文件或目录，只运行一次应用，抓取真实画面，并让同一个进程继续运行。进度输出到 stderr（`--quiet` 可关闭），耗时写入 `summary.json`；安装/启动失败会自动恢复桌面。目录部署通过 `/tmp/maixpy_skill/cache/` 下的 SHA-256 清单只同步变化文件。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。需要停止正常应用并恢复桌面时加 `--restore`。目录部署用 `--entry` 指定入口，`--capture-timeout` 控制首帧等待时间；抓帧失败或后台进程退出时返回非零。`version` 查看版本，`update` 更新 git 检出。
 
 通过 helper 运行用户代码：
 

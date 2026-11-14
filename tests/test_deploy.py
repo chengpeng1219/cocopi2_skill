@@ -105,9 +105,9 @@ class DeployTests(unittest.TestCase):
             summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
             session = FakeSession.instances[-1]
             self.assertTrue(summary["directory"])
-            self.assertEqual(summary["entry"], "app/main.py")
-            self.assertTrue(any(path.endswith("/app.tar.gz") for path in session.files))
-            self.assertTrue(any("tar -xzf" in command for command in session.commands))
+            self.assertTrue(str(summary["entry"]).endswith("main.py"))
+            self.assertTrue(any(path.endswith("/manifest.json") for path in session.files))
+            self.assertTrue(any(path.endswith("/main.py") for path in session.files))
 
     def test_deploy_marks_dead_process_as_not_running(self) -> None:
         FakeSession.alive = False
@@ -128,6 +128,49 @@ class DeployTests(unittest.TestCase):
 
             summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
             self.assertFalse(summary["running"])
+
+    def test_directory_sync_skips_unchanged_files(self) -> None:
+        class SyncSession:
+            def __init__(self, manifest):
+                self.manifest = manifest
+                self.puts = []
+
+            def run(self, command, *, timeout=None):
+                return CommandResult(0, "", "")
+
+            def get(self, remote_path, local_path):
+                Path(local_path).write_text(json.dumps(self.manifest), encoding="utf-8")
+                return CommandResult(0, "", "")
+
+            def put(self, local_path, remote_path):
+                self.puts.append(remote_path)
+                if remote_path.endswith("/manifest.json"):
+                    self.manifest = json.loads(Path(local_path).read_text(encoding="utf-8"))
+                return CommandResult(0, "", "")
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "main.py").write_text("print('one')\n", encoding="utf-8")
+            manifest = deploy._file_manifest(root)
+            session = SyncSession({})
+
+            stats = deploy._sync_directory(session, root, "/cache/app")
+            self.assertEqual(stats["uploaded"], 1)
+            self.assertIn("/cache/app/main.py", session.puts)
+            self.assertIn("/cache/app/manifest.json", session.puts)
+
+            (root / "main.py").write_text("print('two')\n", encoding="utf-8")
+            session.puts.clear()
+            stats = deploy._sync_directory(session, root, "/cache/app")
+            self.assertEqual(stats["uploaded"], 1)
+            self.assertIn("/cache/app/main.py", session.puts)
+            self.assertIn("/cache/app/manifest.json", session.puts)
+
+            session.puts.clear()
+            stats = deploy._sync_directory(session, root, "/cache/app")
+            self.assertEqual(stats["uploaded"], 0)
+            self.assertEqual(stats["skipped"], 1)
+            self.assertEqual(session.puts, ["/cache/app/manifest.json"])
 
     def test_connection_error_detection(self) -> None:
         self.assertTrue(deploy._looks_like_connection_error(RuntimeError("timed out opening channel")))

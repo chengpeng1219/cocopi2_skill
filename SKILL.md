@@ -118,6 +118,8 @@ Defaults:
 
 Store host, user, name, and device class in normal device config. Store passwords only in `.maixpy/device_credentials.local.json`.
 
+To reuse one device configuration across projects, set `COCOPI2_CONFIG_DIR` to a shared directory. The helper then reads and writes config there instead of the project `.maixpy/`.
+
 ## Code Rules
 
 Before generating MaixPy code, read `references/maixpy-app-rules.md`.
@@ -144,6 +146,8 @@ python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
 python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 python <skill-dir>/scripts/maixpy_skill/cli.py repair
 python <skill-dir>/scripts/maixpy_skill/cli.py runs
+python <skill-dir>/scripts/maixpy_skill/cli.py version
+python <skill-dir>/scripts/maixpy_skill/cli.py update
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
@@ -155,7 +159,7 @@ For a screen-facing app, prefer `deploy`. It enters development mode once, uploa
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-Deploy prints phase progress to stderr (`--quiet` suppresses it) and records `timings_ms` in `summary.json`. It restores the launcher on setup/launch failures and when the background process dies. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. `--restore` stops a healthy app and restores the launcher; `--no-capture` skips the frame; `--no-background` runs in the foreground until the timeout; `--capture-timeout` controls how long to wait for the first frame. Directory deployments use `--entry` (default `main.py`). The command exits non-zero if the frame is missing or a background process dies. `runs` lists recent deploys.
+Deploy prints phase progress to stderr (`--quiet` suppresses it) and records `timings_ms` in `summary.json`. It restores the launcher on setup/launch failures and when the background process dies. Directory deployments sync only changed files via a SHA-256 manifest under `/tmp/maixpy_skill/cache/`, and use `--entry` (default `main.py`). Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. `--restore` stops a healthy app and restores the launcher; `--no-capture` skips the frame; `--no-background` runs in the foreground until the timeout; `--capture-timeout` controls how long to wait for the first frame. The command exits non-zero if the frame is missing or a background process dies. `runs` lists recent deploys; `version` shows the installed version; `update` pulls a git checkout.
 
 The `run` command must enter and verify development mode on every invocation, then stop and re-check applications under `/maixapp/apps/` before executing user code.
 

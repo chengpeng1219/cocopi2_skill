@@ -99,6 +99,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=10)
     p.set_defaults(func=cmd_runs)
 
+    p = sub.add_parser("version", help="show the installed skill version")
+    p.set_defaults(func=cmd_version)
+
+    p = sub.add_parser("update", help="update a git checkout of this skill")
+    p.set_defaults(func=cmd_update)
+
     p = sub.add_parser("deploy", help="deploy one file, run it, and capture a frame")
     p.add_argument("file")
     p.add_argument("--timeout", type=int, default=60)
@@ -410,6 +416,46 @@ def cmd_runs(args: argparse.Namespace) -> int:
         frame = summary.get("frame") or "-"
         print(f"{stamp}  {path.name}  {state}  frame={frame}")
     return 0
+
+
+def _skill_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def cmd_version(args: argparse.Namespace) -> int:
+    root = _skill_root()
+    version_file = root / "VERSION"
+    version = version_file.read_text(encoding="utf-8").strip() if version_file.exists() else "unknown"
+    print(f"cocopi2-skill {version}")
+    print(f"路径: {root}")
+    if (root / ".git").exists():
+        try:
+            commit = subprocess.check_output(
+                ["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
+                text=True,
+            ).strip()
+            print(f"提交: {commit}")
+        except Exception:
+            pass
+    return 0
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    root = _skill_root()
+    if not (root / ".git").exists():
+        print("当前安装不是 git 仓库。请从 https://github.com/chengpeng1219/cocopi2_skill 重新安装。")
+        return 1
+    proc = subprocess.run(
+        ["git", "-C", str(root), "pull", "--ff-only"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.stdout.strip():
+        print(proc.stdout.strip())
+    if proc.stderr.strip():
+        print(proc.stderr.strip())
+    return proc.returncode
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:

@@ -316,6 +316,20 @@ class CliTests(unittest.TestCase):
         self.assertIn("run1", stdout.getvalue())
         self.assertIn("running", stdout.getvalue())
 
+    def test_version_prints_installed_version(self) -> None:
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = cli.main(["version"])
+        self.assertEqual(code, 0)
+        self.assertIn("cocopi2-skill 1.7.0", stdout.getvalue())
+
+    def test_update_without_git_checkout_prints_install_url(self) -> None:
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            code = cli.main(["update"])
+        self.assertEqual(code, 1)
+        self.assertIn("github.com/chengpeng1219/cocopi2_skill", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -118,6 +118,8 @@ python <skill-dir>/scripts/maixpy_skill/cli.py auth
 
 普通设备配置只保存 host、user、name 和 device class。密码只保存到 `.maixpy/device_credentials.local.json`。
 
+如果希望在多个项目间复用同一份设备配置，把 `COCOPI2_CONFIG_DIR` 设置为共享目录，helper 会改用该目录读写配置。
+
 ## 代码规则
 
 生成 MaixPy 代码前，阅读 `references/maixpy-app-rules.md`。
@@ -144,6 +146,8 @@ python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
 python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 python <skill-dir>/scripts/maixpy_skill/cli.py repair
 python <skill-dir>/scripts/maixpy_skill/cli.py runs
+python <skill-dir>/scripts/maixpy_skill/cli.py version
+python <skill-dir>/scripts/maixpy_skill/cli.py update
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
@@ -155,7 +159,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-部署会在 stderr 输出分阶段进度（`--quiet` 可关闭），并在 `summary.json` 记录 `timings_ms`。安装/启动失败或后台进程退出时会自动恢复桌面。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。`--restore` 会在应用正常运行时停止它并恢复桌面；`--no-capture` 跳过抓帧；`--no-background` 前台运行到超时；`--capture-timeout` 控制等待首帧的时间。目录部署用 `--entry` 指定入口（默认 `main.py`）。抓帧失败或后台进程退出时命令返回非零。`runs` 可列出最近部署记录。
+部署会在 stderr 输出分阶段进度（`--quiet` 可关闭），并在 `summary.json` 记录 `timings_ms`。安装/启动失败或后台进程退出时会自动恢复桌面。目录部署通过 `/tmp/maixpy_skill/cache/` 下的 SHA-256 清单只同步变化文件，用 `--entry` 指定入口（默认 `main.py`）。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。`--restore` 会在应用正常运行时停止它并恢复桌面；`--no-capture` 跳过抓帧；`--no-background` 前台运行到超时；`--capture-timeout` 控制等待首帧的时间。抓帧失败或后台进程退出时命令返回非零。`runs` 列出最近部署，`version` 查看版本，`update` 更新 git 检出。
 
 `run` 命令每次执行时都必须先进入并验证开发模式，然后在运行用户代码前停止并复查 `/maixapp/apps/` 下正在运行的应用。
 
