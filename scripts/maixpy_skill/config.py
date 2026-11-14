@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -172,3 +173,36 @@ def get_device(name: str | None = None, cwd: Path | None = None) -> Device:
 
 def clear_device(cwd: Path | None = None) -> None:
     save_config({"current_device": None, "devices": {}}, cwd)
+
+
+def save_device_password(host: str, password: str, name: str | None = None, cwd: Path | None = None) -> Path:
+    """Save a device password locally without exposing it in output."""
+    if not host or not password:
+        raise ConfigError("host and password are required")
+
+    path = credentials_path(cwd)
+    data: dict[str, Any] = {"defaults": {}, "devices": {}}
+    if path.exists():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            pass
+
+    devices = data.setdefault("devices", {})
+    if not isinstance(devices, dict):
+        devices = {}
+        data["devices"] = devices
+    entry = {"password": password}
+    devices[host] = entry
+    if name:
+        devices[name] = entry
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    return path

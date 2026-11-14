@@ -1,8 +1,16 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import json
 import unittest
 
-from scripts.maixpy_skill.config import ConfigError, get_device, normalize_device_class, save_config, set_device
+from scripts.maixpy_skill.config import (
+    ConfigError,
+    get_device,
+    normalize_device_class,
+    save_config,
+    save_device_password,
+    set_device,
+)
 
 
 class ConfigTests(unittest.TestCase):
@@ -41,6 +49,16 @@ class ConfigTests(unittest.TestCase):
 
             self.assertEqual(device.password, "local-secret")
             self.assertNotIn("password", device.public_dict())
+
+    def test_save_device_password_keeps_secret_out_of_public_config(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            path = save_device_password("192.168.1.2", "local-secret", name="dev", cwd=cwd)
+            data = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(data["devices"]["192.168.1.2"]["password"], "local-secret")
+            self.assertEqual(data["devices"]["dev"]["password"], "local-secret")
+            self.assertFalse((cwd / ".maixpy" / "config.json").exists())
 
 
 if __name__ == "__main__":

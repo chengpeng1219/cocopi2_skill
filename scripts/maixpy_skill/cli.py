@@ -1,19 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
+import shutil
 import sys
 from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from maixpy_skill import dashboard, deploy, discover, doctor, launcher, runner
-    from maixpy_skill.config import ConfigError, clear_device, get_device, load_config, set_device
-    from maixpy_skill.ssh import run_ssh
+    from maixpy_skill.config import ConfigError, clear_device, get_device, load_config, save_device_password, set_device
+    from maixpy_skill.ssh import RemoteSession, paramiko_available, run_ssh
 else:
     from . import dashboard, deploy, discover, doctor, launcher, runner
-    from .config import ConfigError, clear_device, get_device, load_config, set_device
-    from .ssh import run_ssh
+    from .config import ConfigError, clear_device, get_device, load_config, save_device_password, set_device
+    from .ssh import RemoteSession, paramiko_available, run_ssh
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +52,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-deep", action="store_true", help="skip network and SSH checks")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("auth", help="securely prompt for and save the device SSH password")
+    p.add_argument("--host")
+    p.add_argument("--user")
+    p.add_argument("--name")
+    p.add_argument("--device-class")
+    p.set_defaults(func=cmd_auth)
 
     p = sub.add_parser("deploy", help="deploy one file, run it, and capture a frame")
     p.add_argument("file")
@@ -112,6 +121,51 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_serve(args: argparse.Namespace) -> int:
     dashboard.serve(host=args.host, port=args.port, deep=not args.no_deep)
     return 0
+
+
+def cmd_auth(args: argparse.Namespace) -> int:
+    data = load_config()
+    current = data.get("current_device")
+    raw = data.get("devices", {}).get(current) if current else None
+    host = args.host or (raw or {}).get("host")
+    if not host:
+        print("未配置设备。请在终端运行 auth --host <IP>，或先运行 device set。")
+        return 2
+
+    user = args.user or (raw or {}).get("user") or "root"
+    device_class = args.device_class or (raw or {}).get("device_class") or "maixcam2"
+    name = args.name or current or host
+    if raw is None:
+        set_device(host, user, name, device_class)
+
+    password = getpass.getpass(f"请输入 {user}@{host} 的 SSH 密码（输入不会显示）: ")
+    if not password:
+        print("未输入密码，已取消。")
+        return 2
+
+    save_device_password(host, password, name=name)
+    print("密码已保存到 .maixpy/device_credentials.local.json。")
+
+    if not paramiko_available() and not shutil.which("sshpass"):
+        print("本机缺少 paramiko 和 sshpass，暂时无法自动验证。")
+        print("请运行：python -m pip install paramiko")
+        return 2
+
+    device = get_device()
+    try:
+        session = RemoteSession(device, timeout=12)
+        result = session.run("echo __AUTH_OK__", timeout=10)
+        session.close()
+    except Exception as exc:
+        print(f"认证测试失败：{exc}")
+        return 1
+
+    if result.returncode == 0 and "__AUTH_OK__" in result.stdout:
+        print("认证成功，设备已连接。")
+        return 0
+    detail = (result.stderr or result.stdout).strip()[:200]
+    print(f"认证失败：{detail}")
+    return 1
 
 
 def cmd_deploy(args: argparse.Namespace) -> int:

@@ -95,6 +95,14 @@ Support exactly two SSH password paths:
 - Local credential file: `.maixpy/device_credentials.local.json`, copied from `device_credentials.local.example.json` when needed.
 - Terminal input: ask the user to run the helper in their own terminal and type the password into the SSH prompt.
 
+Preferred setup: ask the user to run `auth` in their own terminal. It prompts without echo, saves the password to `.maixpy/device_credentials.local.json`, and verifies the login with paramiko or sshpass:
+
+```bash
+python <skill-dir>/scripts/maixpy_skill/cli.py auth
+```
+
+If the machine has neither paramiko nor sshpass, `auth` says to install paramiko once (`python -m pip install paramiko`). Never ask the user to paste the password into chat.
+
 Defaults:
 
 - MaixCAM / MaixCAM Pro: username `root`, password `root`

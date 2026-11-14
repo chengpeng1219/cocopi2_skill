@@ -95,6 +95,14 @@ python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 - 本地凭据文件：`.maixpy/device_credentials.local.json`，需要时从 `device_credentials.local.example.json` 复制。
 - 终端输入：请用户在自己的终端运行 helper，并在 SSH 密码提示中输入。
 
+推荐先让用户在自己的终端运行 `auth`。它会无回显地提示密码，保存到 `.maixpy/device_credentials.local.json`，并用 paramiko 或 sshpass 验证登录：
+
+```bash
+python <skill-dir>/scripts/maixpy_skill/cli.py auth
+```
+
+如果本机既没有 paramiko 也没有 sshpass，`auth` 会提示一次性安装 paramiko（`python -m pip install paramiko`）。不要要求用户把密码发到对话里。
+
 默认账号：
 
 - MaixCAM / MaixCAM Pro：用户名 `root`，密码 `root`

@@ -15,6 +15,13 @@ def check() -> dict[str, object]:
         "avahi-browse": bool(tools["avahi-browse"]),
         "dns-sd": bool(tools["dns-sd"]),
     }
+    paramiko_ok = importlib.util.find_spec("paramiko") is not None
+    if tools["sshpass"]:
+        auth_backend = "sshpass"
+    elif paramiko_ok:
+        auth_backend = "paramiko"
+    else:
+        auth_backend = "interactive"
     hard_missing = []
     if not python_ok:
         hard_missing.append("python")
@@ -30,6 +37,8 @@ def check() -> dict[str, object]:
         },
         "tools": tools,
         "mdns": mdns,
+        "python_modules": {"paramiko": paramiko_ok},
+        "auth_backend": auth_backend,
         "hard_missing": hard_missing,
         "optional_missing": [name for name in ["sshpass"] if not tools[name]],
     }

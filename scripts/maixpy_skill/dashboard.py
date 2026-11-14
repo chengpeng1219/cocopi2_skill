@@ -156,10 +156,17 @@ def _next_steps(status: dict[str, Any], python_cmd: str) -> list[str]:
     if tcp.get("ok") is False:
         steps.append("22 端口连不上。检查 IP 是否正确、设备是否在线、路由器是否开启 AP 隔离、电脑防火墙是否放行。")
     if ssh.get("ok") is False and tcp.get("ok") is not False:
-        if "batch mode" in (ssh.get("stderr") or "").lower() or ssh.get("returncode") in (255, None):
+        cli = Path(__file__).resolve().parent / "cli.py"
+        backend = (status.get("environment") or {}).get("auth_backend") or "interactive"
+        if backend == "interactive":
             steps.append(
-                "SSH 认证未完成。把密码写入 .maixpy/device_credentials.local.json，"
-                "或在本终端运行 device check 并按提示输入密码。"
+                f"SSH 认证未完成。请在终端运行 `python \"{cli}\" auth` 输入设备密码；"
+                "若缺少 paramiko，先运行 `python -m pip install paramiko`。"
+            )
+        else:
+            steps.append(
+                f"SSH 认证未完成。请在终端运行 `python \"{cli}\" auth` 输入设备密码，"
+                "密码不会出现在对话里。"
             )
     if ssh.get("ok"):
         steps.append("连接正常。可以直接描述要开发的功能，或运行 run <file.py>。")
@@ -201,10 +208,22 @@ def summarize(status: dict[str, Any]) -> tuple[str, str, str]:
             "请确认设备和电脑在同一 WiFi，然后把最新 IP 告诉我。",
         )
     if ssh.get("ok") is False:
+        cli = Path(__file__).resolve().parent / "cli.py"
+        backend = (status.get("environment") or {}).get("auth_backend") or "interactive"
+        if backend == "interactive":
+            advice = (
+                f"网络可达但 SSH 登录失败。请在终端运行 `python \"{cli}\" auth` 输入密码；"
+                "若缺少 paramiko，先运行 `python -m pip install paramiko`。"
+            )
+        else:
+            advice = (
+                f"网络可达但 SSH 登录失败。请在终端运行 `python \"{cli}\" auth` 输入密码，"
+                "然后重新检测；密码不要发到对话里。"
+            )
         return (
             "auth_failed",
             "网络可达，但 SSH 登录未完成",
-            "我会使用已保存的凭据重试；如果仍失败，再请你在本机终端按提示输入密码。",
+            advice,
         )
     if dns.get("ok") is False:
         return (
@@ -232,6 +251,7 @@ def collect(*, cwd: Path | None = None, deep: bool = True, timeout: int = 8) -> 
     python_cmd = Path(__import__("sys").argv[0]).as_posix()
     status: dict[str, Any] = {
         "environment": doctor.check(),
+        "cli": str(Path(__file__).resolve().parent / "cli.py"),
         "deep": deep,
         "configured": False,
         "device": None,

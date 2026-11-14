@@ -84,6 +84,14 @@ If `status` reports a failure, translate it into at most one user action:
 
 Support exactly two password handling paths.
 
+Preferred setup: ask the user to run this in their own terminal:
+
+```bash
+python <skill-dir>/scripts/maixpy_skill/cli.py auth
+```
+
+It prompts without echo, saves the password to `.maixpy/device_credentials.local.json`, and verifies the login. If neither paramiko nor sshpass is installed, it says to run `python -m pip install paramiko` once. Do not ask the user to paste the password into chat.
+
 ### Path 1: Local credential config
 
 The helper reads:
@@ -126,7 +134,7 @@ When a password is loaded from config and `sshpass` is installed, the helper use
 
 ### Path 2: Terminal input
 
-To use terminal input, leave the matching password absent or empty in `.maixpy/device_credentials.local.json`. If no password is configured, or `sshpass` is unavailable, ask the user to run the helper in their own terminal and type the password into the SSH prompt.
+To use terminal input, leave the matching password absent or empty in `.maixpy/device_credentials.local.json`. If no password is configured, or `sshpass`/paramiko is unavailable, ask the user to run `auth` in their own terminal and type the password there.
 
 If the conversation needs to guide the user to prepare a password, use only these prompts and do not ask the user to paste the password into chat:
 

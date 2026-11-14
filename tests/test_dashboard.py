@@ -81,6 +81,28 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(state, "unreachable")
         self.assertIn("最新 IP", advice)
 
+    def test_auth_failure_advice_tells_user_how_to_fix_it(self) -> None:
+        status = {
+            "configured": True,
+            "deep": True,
+            "device": {"host": "192.168.0.64"},
+            "dns": {"ok": True},
+            "tcp": {"ok": True},
+            "ssh": {"ok": False, "stderr": "Permission denied (publickey,password)"},
+            "remote": None,
+            "environment": {
+                "auth_backend": "interactive",
+                "tools": {"ssh": "ssh", "scp": "scp", "sshpass": None},
+                "mdns": {},
+            },
+        }
+
+        state, summary, advice = dashboard.summarize(status)
+
+        self.assertEqual(state, "auth_failed")
+        self.assertIn("auth", advice)
+        self.assertIn("pip install paramiko", advice)
+
     def test_collect_without_device_returns_setup_steps(self) -> None:
         with TemporaryDirectory() as tmp:
             with patch("scripts.maixpy_skill.dashboard.doctor.check", return_value=ENV):

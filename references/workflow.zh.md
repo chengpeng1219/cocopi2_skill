@@ -84,6 +84,14 @@ python <skill-dir>/scripts/maixpy_skill/cli.py status
 
 只支持两种密码处理方式。
 
+推荐先让用户在自己的终端运行：
+
+```bash
+python <skill-dir>/scripts/maixpy_skill/cli.py auth
+```
+
+它会无回显地提示密码，保存到 `.maixpy/device_credentials.local.json`，并验证登录。如果本机既没有 paramiko 也没有 sshpass，会提示一次性运行 `python -m pip install paramiko`。不要要求用户把密码发到对话里。
+
 ### 方式一：本地凭据配置
 
 helper 读取：
@@ -126,7 +134,7 @@ Copy-Item <skill-dir>\device_credentials.local.example.json .maixpy\device_crede
 
 ### 方式二：终端输入
 
-如果希望使用终端输入，让 `.maixpy/device_credentials.local.json` 中对应密码不存在或为空字符串。如果没有配置密码，或者本机没有 `sshpass`，请用户在自己的终端运行 helper 命令，并在 SSH 密码提示中输入密码。
+如果希望使用终端输入，让 `.maixpy/device_credentials.local.json` 中对应密码不存在或为空字符串。如果没有配置密码，或者本机没有 `sshpass`/paramiko，请用户在自己的终端运行 `auth` 命令并在提示处输入密码。
 
 如果对话过程需要引导用户准备密码，只使用下面的提示，不要求用户把密码发到对话中：
 
