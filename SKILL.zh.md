@@ -59,6 +59,14 @@ python <skill-dir>\scripts\maixpy_skill\cli.py <command>
 
 连接状态由助手自己运行和判断；用户只需要提供设备 IP。不要要求用户运行 CLI、阅读工具清单或自行决定认证方式。
 
+知道 IP 后最短路径只需一条命令：
+
+```bash
+python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
+```
+
+它会尝试已保存/默认凭据，根据设备型号自动识别 MaixCAM2 / MaixCAM Pro，保存设备类型并输出简短结果。认证失败时只提示运行 `auth`，不倾倒诊断信息。
+
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py status
 ```
@@ -133,6 +141,9 @@ python <skill-dir>/scripts/maixpy_skill/cli.py device check
 python <skill-dir>/scripts/maixpy_skill/cli.py mode status
 python <skill-dir>/scripts/maixpy_skill/cli.py mode enter
 python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
+python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
+python <skill-dir>/scripts/maixpy_skill/cli.py repair
+python <skill-dir>/scripts/maixpy_skill/cli.py runs
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
@@ -144,7 +155,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。`--restore` 会停止应用并恢复桌面；`--no-capture` 跳过抓帧；`--no-background` 前台运行到超时；`--capture-timeout` 控制等待首帧的时间。目录部署用 `--entry` 指定入口（默认 `main.py`）。抓帧失败或后台进程退出时命令会返回非零。
+部署会在 stderr 输出分阶段进度（`--quiet` 可关闭），并在 `summary.json` 记录 `timings_ms`。安装/启动失败或后台进程退出时会自动恢复桌面。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。`--restore` 会在应用正常运行时停止它并恢复桌面；`--no-capture` 跳过抓帧；`--no-background` 前台运行到超时；`--capture-timeout` 控制等待首帧的时间。目录部署用 `--entry` 指定入口（默认 `main.py`）。抓帧失败或后台进程退出时命令返回非零。`runs` 可列出最近部署记录。
 
 `run` 命令每次执行时都必须先进入并验证开发模式，然后在运行用户代码前停止并复查 `/maixapp/apps/` 下正在运行的应用。
 

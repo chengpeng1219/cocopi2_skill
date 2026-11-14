@@ -54,12 +54,14 @@ Internal requirements (the assistant handles these; do not turn them into user t
 
 Do not send a questionnaire or a command list. The user should only need to provide the device IP.
 
-If the user already gave an IP, save it immediately and run the dashboard yourself:
+If the user already gave an IP, use the one-command path:
 
 ```bash
-python <skill-dir>/scripts/maixpy_skill/cli.py device set --host <IP> --user root --device-class <maixcam-pro|maixcam2>
+python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 python <skill-dir>/scripts/maixpy_skill/cli.py status
 ```
+
+`connect` tries saved/default credentials and detects the device class from the hardware model. If it reports authentication failure, use `auth`.
 
 If the IP is unknown, ask exactly one question:
 
@@ -170,7 +172,7 @@ For screen-facing apps, prefer the one-shot deploy pipeline:
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-It enters development mode once, uploads a file or directory, runs the app once, captures a real frame, and leaves the same process running. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. Use `--restore` to stop the app and restore the launcher. Directory deployments use `--entry`; `--capture-timeout` controls the first-frame wait. Missing frames or dead background processes return a non-zero exit code.
+It enters development mode once, uploads a file or directory, runs the app once, captures a real frame, and leaves the same process running. Progress is printed to stderr (`--quiet` suppresses it), timings are stored in `summary.json`, and setup/launch failures restore the launcher automatically. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. Use `--restore` to stop a healthy app and restore the launcher. Directory deployments use `--entry`; `--capture-timeout` controls the first-frame wait. Missing frames or dead background processes return a non-zero exit code.
 
 Run user code through:
 
@@ -237,5 +239,7 @@ Exiting development mode starts exactly one launcher daemon in the background. I
 - If SSH fails, run `device check` and report the exact connection failure without exposing secrets.
 - If applications under `/maixapp/apps/` cannot be stopped, do not blindly run camera/display code.
 - If `mode enter` reaches daemon startup but display refresh fails, treat it as failed and inspect stderr or `/tmp/launcher-daemon.log`.
+- If launcher processes are duplicated or the desktop is stuck, run `repair`.
+- Use `runs` to review recent deploy outcomes and frame paths.
 - If the app hangs, inspect whether generated code has an exit path.
 - If output is unclear for a vision task, temporarily add or enable debug image saving and rerun with `--debug-images`. Remove or disable it before presenting final user-facing code unless the user explicitly asks to keep debug mode enabled.

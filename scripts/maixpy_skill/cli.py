@@ -6,6 +6,7 @@ import json
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -15,6 +16,8 @@ if __package__ in {None, ""}:
         ConfigError,
         Device,
         clear_device,
+        default_password,
+        device_password,
         get_device,
         load_config,
         normalize_device_class,
@@ -28,6 +31,8 @@ else:
         ConfigError,
         Device,
         clear_device,
+        default_password,
+        device_password,
         get_device,
         load_config,
         normalize_device_class,
@@ -80,6 +85,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--device-class")
     p.set_defaults(func=cmd_auth)
 
+    p = sub.add_parser("connect", help="connect to a device, detect its class, and save it")
+    p.add_argument("--host")
+    p.add_argument("--user")
+    p.add_argument("--name")
+    p.add_argument("--device-class")
+    p.set_defaults(func=cmd_connect)
+
+    p = sub.add_parser("repair", help="clean duplicate launcher daemons and restore one")
+    p.set_defaults(func=cmd_repair)
+
+    p = sub.add_parser("runs", help="list recent deploy runs")
+    p.add_argument("--limit", type=int, default=10)
+    p.set_defaults(func=cmd_runs)
+
     p = sub.add_parser("deploy", help="deploy one file, run it, and capture a frame")
     p.add_argument("file")
     p.add_argument("--timeout", type=int, default=60)
@@ -90,6 +109,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reconnect-timeout", type=int, default=45)
     p.add_argument("--capture-timeout", type=float, default=10.0, help="maximum seconds to wait for a frame")
     p.add_argument("--entry", default="main.py", help="entry file inside a directory deployment")
+    p.add_argument("--quiet", action="store_true", help="suppress progress messages")
     p.set_defaults(func=cmd_deploy)
 
     p = sub.add_parser("device")
@@ -248,8 +268,157 @@ def install_paramiko() -> bool:
     return False
 
 
+def _auth_hint() -> str:
+    cli = Path(__file__).resolve()
+    return f"认证未完成。请在终端运行：python \"{cli}\" auth"
+
+
+def cmd_connect(args: argparse.Namespace) -> int:
+    data = load_config()
+    current = data.get("current_device")
+    raw = data.get("devices", {}).get(current) if current else None
+    host = args.host or (raw or {}).get("host")
+    if not host:
+        print("请把 MaixCAM 的 IP 告诉我，例如：connect --host 192.168.0.64")
+        return 2
+
+    user = args.user or (raw or {}).get("user") or "root"
+    name = args.name or current or host
+    device_class = args.device_class or (raw or {}).get("device_class") or "unknown"
+
+    password = None
+    if raw is not None and raw.get("host") == host:
+        try:
+            password = get_device().password
+        except ConfigError:
+            password = None
+    if not password:
+        password = device_password(name, host, normalize_device_class(device_class))
+    if not password:
+        password = default_password(device_class)
+
+    if not paramiko_available() and not shutil.which("sshpass"):
+        if not password:
+            print(_auth_hint())
+            return 2
+        print("缺少认证组件，正在自动安装 paramiko...")
+        if not install_paramiko():
+            return 2
+
+    test_device = Device(
+        host=host,
+        user=user,
+        name=name,
+        device_class=normalize_device_class(device_class),
+        password=password or None,
+    )
+    command = (
+        "echo __OK__; "
+        "echo \"HOSTNAME=$(hostname)\"; "
+        "echo \"MODEL=$(tr -d '\\000' < /proc/device-tree/model 2>/dev/null)\"; "
+        "echo \"ARCH=$(uname -m)\""
+    )
+    try:
+        session = RemoteSession(test_device, timeout=12)
+        result = session.run(command, timeout=10)
+        session.close()
+    except Exception as exc:
+        print(f"连接失败：{exc}")
+        return 1
+
+    if result.returncode != 0 or "__OK__" not in result.stdout:
+        detail = (result.stderr or result.stdout).strip()[:200]
+        if "permission denied" in detail.lower() or "publickey" in detail.lower() or not detail:
+            print(_auth_hint())
+        else:
+            print(f"连接失败：{detail}")
+        return 1
+
+    info: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        if "=" in line and line.split("=", 1)[0].isupper():
+            key, value = line.split("=", 1)
+            info[key] = value.strip()
+
+    model = info.get("MODEL", "")
+    detected = normalize_device_class(device_class)
+    if "maixcam2" in model.lower():
+        detected = "maixcam2"
+    elif "maixcam" in model.lower():
+        detected = "maixcam-pro"
+    set_device(host, user, name, detected)
+
+    print(f"已连接：{info.get('HOSTNAME', host)}（{host}）")
+    if model:
+        print(f"型号：{model}")
+    if info.get("ARCH"):
+        print(f"架构：{info['ARCH']}")
+    print("可以直接告诉我要开发的功能。")
+    return 0
+
+
+def cmd_repair(args: argparse.Namespace) -> int:
+    device = get_device()
+    try:
+        session = RemoteSession(device, timeout=12)
+        result = session.run(launcher.start_launcher_daemon_command(), timeout=40)
+        status = session.run(launcher.status_command(), timeout=15)
+        session.close()
+    except Exception as exc:
+        print(f"修复失败：{exc}")
+        return 1
+
+    text = (result.stdout or result.stderr).strip()
+    if text:
+        print(text)
+    for line in status.stdout.splitlines():
+        if line.startswith(("daemon=", "launcher=", "daemon_count=")):
+            print(line)
+    return 0 if "daemon=running" in status.stdout else 1
+
+
+def cmd_runs(args: argparse.Namespace) -> int:
+    root = Path.cwd() / ".maixpy" / "runs"
+    if not root.exists():
+        print("暂无运行记录。")
+        return 0
+    runs = sorted(
+        (path for path in root.iterdir() if path.is_dir()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )[: max(1, args.limit)]
+    if not runs:
+        print("暂无运行记录。")
+        return 0
+    for path in runs:
+        summary: dict[str, object] = {}
+        summary_path = path / "summary.json"
+        if summary_path.exists():
+            try:
+                summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                summary = {}
+        if summary.get("restored"):
+            state = "restored"
+        elif summary.get("running"):
+            state = "running"
+        elif "exit_code" in summary:
+            state = f"exit={summary.get('exit_code')}"
+        else:
+            state = "unknown"
+        stamp = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        frame = summary.get("frame") or "-"
+        print(f"{stamp}  {path.name}  {state}  frame={frame}")
+    return 0
+
+
 def cmd_deploy(args: argparse.Namespace) -> int:
     device = get_device()
+    progress = None
+    if not args.quiet:
+        def progress(message: str) -> None:
+            print(message, file=sys.stderr, flush=True)
+        progress("连接设备...")
     out_dir = deploy.deploy_file(
         device,
         Path(args.file),
@@ -261,6 +430,7 @@ def cmd_deploy(args: argparse.Namespace) -> int:
         reconnect_timeout=args.reconnect_timeout,
         capture_timeout=args.capture_timeout,
         entry=args.entry,
+        progress=progress,
     )
     print(f"DEPLOY_DIR={out_dir}")
     summary_path = out_dir / "summary.json"
@@ -274,9 +444,17 @@ def cmd_deploy(args: argparse.Namespace) -> int:
             summary = {}
     if not args.no_capture and not summary.get("frame"):
         print("抓帧失败：应用没有显示画面或未在限定时间内显示。")
+        tail = summary.get("capture_error") or summary.get("stdout_tail")
+        if tail:
+            print("最近日志：")
+            print(str(tail).strip()[-1000:])
         return 1
     if not args.no_background and not summary.get("running"):
         print("后台进程未存活，请检查 run.log。")
+        tail = summary.get("stdout_tail")
+        if tail:
+            print("最近日志：")
+            print(str(tail).strip()[-1000:])
         return 1
     if args.no_background and summary.get("exit_code") not in (0, 124):
         return 1

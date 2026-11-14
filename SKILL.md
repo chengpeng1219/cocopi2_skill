@@ -59,6 +59,14 @@ Run helper commands from the user's current project directory so `.maixpy/` stat
 
 Run the dashboard yourself; the user should only need to provide the device IP. Do not ask the user to run CLI commands, read tool checklists, or decide how to authenticate.
 
+For the shortest path, use one command after the IP is known:
+
+```bash
+python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
+```
+
+It tries saved/default credentials, detects `MaixCAM2` vs `MaixCAM Pro` from the device model, saves the device class, and prints a short result. If authentication fails, it points to `auth` instead of dumping diagnostics.
+
 ```bash
 python <skill-dir>/scripts/maixpy_skill/cli.py status
 ```
@@ -133,6 +141,9 @@ python <skill-dir>/scripts/maixpy_skill/cli.py device check
 python <skill-dir>/scripts/maixpy_skill/cli.py mode status
 python <skill-dir>/scripts/maixpy_skill/cli.py mode enter
 python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
+python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
+python <skill-dir>/scripts/maixpy_skill/cli.py repair
+python <skill-dir>/scripts/maixpy_skill/cli.py runs
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py>
 python <skill-dir>/scripts/maixpy_skill/cli.py run <local.py> --debug-images
@@ -144,7 +155,7 @@ For a screen-facing app, prefer `deploy`. It enters development mode once, uploa
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. `--restore` stops the app and restores the launcher; `--no-capture` skips the frame; `--no-background` runs in the foreground until the timeout; `--capture-timeout` controls how long to wait for the first frame. Directory deployments use `--entry` (default `main.py`). The command exits non-zero if the frame is missing or a background process dies.
+Deploy prints phase progress to stderr (`--quiet` suppresses it) and records `timings_ms` in `summary.json`. It restores the launcher on setup/launch failures and when the background process dies. Inspect `.maixpy/runs/<run_id>/frame.jpg` before reporting success. `--restore` stops a healthy app and restores the launcher; `--no-capture` skips the frame; `--no-background` runs in the foreground until the timeout; `--capture-timeout` controls how long to wait for the first frame. Directory deployments use `--entry` (default `main.py`). The command exits non-zero if the frame is missing or a background process dies. `runs` lists recent deploys.
 
 The `run` command must enter and verify development mode on every invocation, then stop and re-check applications under `/maixapp/apps/` before executing user code.
 

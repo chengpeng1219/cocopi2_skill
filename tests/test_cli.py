@@ -230,6 +230,92 @@ class CliTests(unittest.TestCase):
                         code = cli.main(["deploy", "app.py"])
         self.assertEqual(code, 1)
 
+    def test_connect_detects_device_class_and_saves_it(self) -> None:
+        fake_session = type(
+            "FakeSession",
+            (),
+            {
+                "run": lambda self, command, timeout=None: CommandResult(
+                    0,
+                    "__OK__\nHOSTNAME=maixcam2-9c54\nMODEL=MaixCAM2\nARCH=aarch64\n",
+                    "",
+                ),
+                "close": lambda self: None,
+            },
+        )()
+        config = {"current_device": None, "devices": {}}
+        with patch("scripts.maixpy_skill.cli.load_config", return_value=config):
+            with patch("scripts.maixpy_skill.cli.device_password", return_value="pw"):
+                with patch("scripts.maixpy_skill.cli.paramiko_available", return_value=True):
+                    with patch("scripts.maixpy_skill.cli.set_device") as set_device:
+                        with patch("scripts.maixpy_skill.cli.RemoteSession", return_value=fake_session):
+                            with redirect_stdout(io.StringIO()):
+                                code = cli.main(["connect", "--host", "192.168.0.64"])
+
+        self.assertEqual(code, 0)
+        set_device.assert_called_once()
+        self.assertEqual(set_device.call_args.args[3], "maixcam2")
+
+    def test_connect_auth_failure_points_to_auth_command(self) -> None:
+        stdout = io.StringIO()
+        fake_session = type(
+            "FakeSession",
+            (),
+            {
+                "run": lambda self, command, timeout=None: CommandResult(
+                    255, "", "Permission denied (publickey,password)"
+                ),
+                "close": lambda self: None,
+            },
+        )()
+        config = {"current_device": None, "devices": {}}
+        with patch("scripts.maixpy_skill.cli.load_config", return_value=config):
+            with patch("scripts.maixpy_skill.cli.device_password", return_value="pw"):
+                with patch("scripts.maixpy_skill.cli.paramiko_available", return_value=True):
+                    with patch("scripts.maixpy_skill.cli.RemoteSession", return_value=fake_session):
+                        with redirect_stdout(stdout):
+                            code = cli.main(["connect", "--host", "192.168.0.64"])
+
+        self.assertEqual(code, 1)
+        self.assertIn("auth", stdout.getvalue())
+
+    def test_repair_reports_single_daemon(self) -> None:
+        class RepairSession:
+            def __init__(self):
+                self.calls = 0
+
+            def run(self, command, *, timeout=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return CommandResult(0, "daemon=running\n", "")
+                return CommandResult(0, "daemon_count=1\ndaemon=running\nlauncher=running\n", "")
+
+            def close(self):
+                pass
+
+        with patch("scripts.maixpy_skill.cli.get_device", return_value=Device(host="x", user="root")):
+            with patch("scripts.maixpy_skill.cli.RemoteSession", return_value=RepairSession()):
+                with redirect_stdout(io.StringIO()):
+                    code = cli.main(["repair"])
+        self.assertEqual(code, 0)
+
+    def test_runs_lists_recent_summary(self) -> None:
+        with TemporaryDirectory() as tmp:
+            cwd = Path(tmp)
+            run_dir = cwd / ".maixpy" / "runs" / "run1"
+            run_dir.mkdir(parents=True)
+            (run_dir / "summary.json").write_text(
+                json.dumps({"frame": "frame.jpg", "running": True}), encoding="utf-8"
+            )
+            stdout = io.StringIO()
+            with patch("scripts.maixpy_skill.cli.Path.cwd", return_value=cwd):
+                with redirect_stdout(stdout):
+                    code = cli.main(["runs"])
+
+        self.assertEqual(code, 0)
+        self.assertIn("run1", stdout.getvalue())
+        self.assertIn("running", stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

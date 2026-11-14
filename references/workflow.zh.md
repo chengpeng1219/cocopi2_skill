@@ -54,12 +54,14 @@ python <skill-dir>/scripts/maixpy_skill/cli.py serve --port 8765
 
 不要发问卷或命令清单。用户只需要提供设备 IP。
 
-如果用户已经给了 IP，助手直接保存并检测：
+如果用户已经给了 IP，使用一条命令：
 
 ```bash
-python <skill-dir>/scripts/maixpy_skill/cli.py device set --host <IP> --user root --device-class <maixcam-pro|maixcam2>
+python <skill-dir>/scripts/maixpy_skill/cli.py connect --host <IP>
 python <skill-dir>/scripts/maixpy_skill/cli.py status
 ```
+
+`connect` 会尝试已保存/默认凭据，并从硬件型号自动识别设备类型。认证失败时再用 `auth`。
 
 如果不知道 IP，只问一句：
 
@@ -170,7 +172,7 @@ MaixCAM2 使用：
 python <skill-dir>/scripts/maixpy_skill/cli.py deploy <local.py>
 ```
 
-它会进入一次开发模式，上传文件或目录，只运行一次应用，抓取真实画面，并让同一个进程继续运行。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。需要停止应用并恢复桌面时加 `--restore`。目录部署用 `--entry` 指定入口，`--capture-timeout` 控制首帧等待时间；抓帧失败或后台进程退出时返回非零。
+它会进入一次开发模式，上传文件或目录，只运行一次应用，抓取真实画面，并让同一个进程继续运行。进度输出到 stderr（`--quiet` 可关闭），耗时写入 `summary.json`；安装/启动失败会自动恢复桌面。汇报成功前先检查 `.maixpy/runs/<run_id>/frame.jpg`。需要停止正常应用并恢复桌面时加 `--restore`。目录部署用 `--entry` 指定入口，`--capture-timeout` 控制首帧等待时间；抓帧失败或后台进程退出时返回非零。
 
 通过 helper 运行用户代码：
 
@@ -237,5 +239,7 @@ python <skill-dir>/scripts/maixpy_skill/cli.py mode exit
 - 如果 SSH 失败，运行 `device check`，报告准确连接错误，但不要暴露 secret。
 - 如果无法停止 `/maixapp/apps/` 下正在运行的应用，不要盲目运行摄像头/屏幕代码。
 - 如果 `mode enter` 已启动 daemon 但刷新显示失败，将其视为失败，并检查 stderr 或 `/tmp/launcher-daemon.log`。
+- 如果 launcher 进程重复或桌面卡住，运行 `repair`。
+- 用 `runs` 查看最近部署结果和帧图片路径。
 - 如果应用卡住，检查生成代码是否有退出路径。
 - 如果视觉任务输出不清楚，临时添加或启用调试图片保存，并用 `--debug-images` 重新运行。最终输出给用户前需要移除或关闭，除非用户明确要求保留调试模式。

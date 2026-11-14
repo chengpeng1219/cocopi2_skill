@@ -208,6 +208,7 @@ def _deploy_once(
     reconnect_timeout: int,
     capture_timeout: float,
     entry: str,
+    progress=None,
 ) -> Path:
     run_id = logs.new_run_id(local_file)
     out_dir = logs.create_run_dir(run_id, cwd)
@@ -219,14 +220,30 @@ def _deploy_once(
         "background": background,
         "capture": capture,
     }
+    timings: dict[str, float] = {}
+    phase_start = time.perf_counter()
+
+    def mark(name: str) -> None:
+        nonlocal phase_start
+        now = time.perf_counter()
+        timings[name] = round((now - phase_start) * 1000, 1)
+        phase_start = now
+
+    def note(message: str) -> None:
+        if progress is not None:
+            progress(message)
 
     session = RemoteSession(device, timeout=20)
     summary["backend"] = session.backend
     try:
         if not _wait_online(session, reconnect_timeout):
             raise RuntimeError("device is not reachable over SSH")
+        mark("connect")
+        note("检查开发模式...")
 
         summary["development_mode"] = _ensure_dev_mode(session)
+        mark("dev_mode")
+        note("上传文件...")
         _check(session.run(f"mkdir -p {remote_dir}/artifacts", timeout=10), "create remote dir")
         wrapper_path = out_dir / "run_wrapper.py"
         wrapper_path.write_text(RUN_WRAPPER, encoding="utf-8")
@@ -235,6 +252,8 @@ def _deploy_once(
         script_path, is_directory = _prepare_payload(local_file, out_dir, session, remote_dir, entry)
         summary["directory"] = is_directory
         summary["entry"] = script_path
+        mark("upload")
+        note("启动应用...")
 
         env = f"MAIXPY_SKILL_RUN_DIR={remote_dir} MAIXPY_DEBUG_IMAGES=0"
         if capture:
@@ -242,9 +261,13 @@ def _deploy_once(
 
         if background:
             pid = _launch_detached(session, remote_dir, env, script_path)
+            if not pid:
+                raise RuntimeError("failed to launch app; run.log may contain details")
             summary["pid"] = pid
             summary["launch"] = f"PID={pid}"
             summary["running"] = _process_alive(session, pid)
+            mark("launch")
+            note("等待画面...")
             if capture:
                 frame_path = out_dir / "frame.jpg"
                 if _wait_for_frame(
@@ -256,16 +279,19 @@ def _deploy_once(
                 ):
                     summary["frame"] = str(frame_path)
                 summary["running"] = _process_alive(session, pid)
+                mark("capture")
         else:
             command = f"cd {remote_dir} && timeout {timeout} env {env} python3 run_wrapper.py {script_path}"
             result = session.run(command, timeout=timeout + 20)
             summary["launch"] = result.stdout.strip()
             summary["exit_code"] = result.returncode
             summary["running"] = False
+            mark("run")
             if capture:
                 frame_path = out_dir / "frame.jpg"
                 if _pull_with_retry(session, f"{remote_dir}/artifacts/frame.jpg", frame_path):
                     summary["frame"] = str(frame_path)
+                mark("capture")
 
         log_result = session.run(f"cat {remote_dir}/run.log 2>/dev/null", timeout=10)
         (out_dir / "run.log").write_text(log_result.stdout, encoding="utf-8")
@@ -277,7 +303,21 @@ def _deploy_once(
             _kill_pid(session, str(summary.get("pid") or ""))
             session.run(launcher.exit_command(), timeout=30)
             summary["restored"] = True
+            mark("restore")
+            note("已恢复桌面。")
+        elif background and not summary.get("running"):
+            session.run(launcher.exit_command(), timeout=30)
+            summary["recovered"] = True
+            note("后台进程未存活，已恢复桌面。")
+        summary["timings_ms"] = timings
         return out_dir
+    except Exception:
+        try:
+            session.run(launcher.exit_command(), timeout=30)
+        except Exception:
+            pass
+        summary["timings_ms"] = timings
+        raise
     finally:
         session.close()
         logs.write_json(out_dir / "summary.json", summary)
@@ -296,6 +336,7 @@ def deploy_file(
     reconnect_timeout: int = 45,
     capture_timeout: float = 10.0,
     entry: str = "main.py",
+    progress=None,
 ) -> Path:
     """Deploy one file or directory, capture a frame, and optionally leave it running."""
     local_file = local_file.resolve()
@@ -314,6 +355,7 @@ def deploy_file(
                 reconnect_timeout=reconnect_timeout,
                 capture_timeout=capture_timeout,
                 entry=entry,
+                progress=progress,
             )
         except Exception as exc:
             last_error = exc
